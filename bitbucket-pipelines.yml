@@ -1,0 +1,7 @@
+image: dimo414/ci-bash
+
+pipelines:
+  default:
+    - step:
+        script:
+          - bats test
