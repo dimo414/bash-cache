@@ -4,4 +4,4 @@ pipelines:
   default:
     - step:
         script:
-          - bats test
+          - bats .
