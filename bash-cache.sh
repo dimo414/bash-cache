@@ -1,31 +1,42 @@
 #!/bin/bash
 
-# Bash-Cache provides a transparent mechanism for caching long-running Bash
+# Bash Cache provides a transparent mechanism for caching long-running Bash
 # functions. See the README.md for full details.
-#
-# Originally part of ProfileGem and prompt.gem, this functionality has been
-# pulled out into a standalone utility.
-# http://hg.mwdiamond.com/profilegem and http://hg.mwdiamond.com/prompt.gem
-#
+
+# Configuration
+_bc_cache_dir="${TMPDIR:-/tmp}/bash-cache"
+_bc_enabled=true
+_bc_version=(0 1 0)
+
+mkdir -p "$_bc_cache_dir"
+
+# Hash function used to key cached results. Implementation is selected
+# dynamically to support different environments (notably OSX provides shasum
+# instead of GNU's sha1sum).
+if command -v sha1sum &> /dev/null; then
+  bc::_hash() { sha1sum <<<"$*"; }
+elif command -v shasum &> /dev/null; then
+  bc::_hash() { shasum <<<"$*"; }
+else
+  bc::_hash() { cksum <<<"$*"; }
+fi
 
 # Given a name and an existing function, create a new function called name that
 # executes the same commands as the initial function.
-# Used by pgem_decorate.
-copy_function() {
+bc::copy_function() {
   local function="${1:?Missing function}"
   local new_name="${2:?Missing new function name}"
   declare -F "$function" &> /dev/null || {
-    echo "No such function ${function}"; return 1
+    echo "No such function ${function}" >&2; return 1
   }
-  eval "$(echo "${new_name}()"; declare -f "$function" | tail -n +2)"
+  eval "$(printf "%s()" "$new_name"; declare -f "$function" | tail -n +2)"
 }
 
-# Consistently-named md5 operation
-# http://stackoverflow.com/q/8996820/113632
-# If this still proves insufficient, it might be simpler to outsource to Python
-if ! command -v md5sum &> /dev/null && command -v md5 &> /dev/null; then
-  md5sum() { md5 "$@"; }
-fi
+# Enables and disables caching - if disabled cached functions delegate directly
+# to their bc::orig:: function.
+bc::on()  { _bc_enabled=true;  }
+bc::off() { _bc_enabled=false; }
+: $_bc_enabled # satisfy SC2034
 
 # Given a function - and optionally a list of environment variables - Decorates
 # the function with a short-term caching mechanism, useful for improving the
@@ -35,37 +46,34 @@ fi
 # Suggested usage:
 #   expensive_func() {
 #     ...
-#   } && _cache expensive_func PWD
+#   } && bc::cache expensive_func PWD
 #
 # This will replace expensive_func with a new fuction that caches the result
 # of calling expensive_func with the same arguments and in the same working
 # directory too often. The original expensive_func can still be called, if
-# necessary, as _orig_expensive_func.
+# necessary, as bc::orig::expensive_func.
 #
 # Reading/writing output to files is tricky, for a breakdown of the issues see
 # http://stackoverflow.com/a/22607352/113632
 #
 # It'd be nice to do something like write out,err,exit to a single file (e.g.
 # base64 encoded, newline separated), but uuencode isn't always installed.
-_cache() {
-  $ENABLE_CACHED_COMMANDS || return 0
-
-  mkdir -p "$CACHE_DIR"
-
+bc::cache() {
   func="${1:?"Must provide a function name to cache"}"
   shift
-  copy_function "${func}" "_orig_${func}" || return
+  bc::copy_function "${func}" "bc::orig::${func}" || return
   local env="${func}:"
   for v in "$@"
   do
     env="$env:\$$v"
   done
   eval "$(cat <<EOF
-    _cache_$func() {
+    bc::_cache::$func() {
       : "\${cachepath:?"Must provide a cachepath to link to as an environment variable"}"
-      mkdir -p "\$CACHE_DIR"
-      local cmddir=\$(mktemp -d "\$CACHE_DIR/XXXXXXXXXX")
-      _orig_$func "\$@" > "\$cmddir/out" 2> "\$cmddir/err"; echo \$? > "\$cmddir/exit"
+      mkdir -p "\$_bc_cache_dir"
+      local cmddir
+      cmddir=\$(mktemp -d "\$_bc_cache_dir/XXXXXXXXXX") || return
+      bc::orig::$func "\$@" > "\$cmddir/out" 2> "\$cmddir/err"; echo \$? > "\$cmddir/exit"
       # Add end-of-output marker to preserve trailing newlines
       printf "EOF" >> "\$cmddir/out"
       printf "EOF" >> "\$cmddir/err"
@@ -75,28 +83,31 @@ EOF
   )"
   eval "$(cat <<EOF
     $func() {
-      \$ENABLE_CACHED_COMMANDS || { _orig_$func "\$@"; return; }
+      \$_bc_enabled || { bc::orig::$func "\$@"; return; }
       # Clean up stale caches in the background
-      (find "\$CACHE_DIR" -not -path "\$CACHE_DIR" -not -newermt '-1 minute' -delete &)
+      (find "\$_bc_cache_dir" -not -path "\$_bc_cache_dir" -not -newermt '-1 minute' -delete &)
 
-      local arghash=\$(echo "\${*}::${env}" | md5sum | tr -cd '0-9a-fA-F')
-      local cachepath=\$CACHE_DIR/\$arghash
+      local arghash cachepath
+      arghash=\$(bc::_hash "\${*}::${env}" | tr -cd '0-9a-fA-F')
+      cachepath=\$_bc_cache_dir/\$arghash
 
       # Read from cache - capture output once to avoid races
       local out err exit
-      out=\$(cat "\$cachepath/out" 2>/dev/null)
-      err=\$(cat "\$cachepath/err" 2>/dev/null)
-      exit=\$(cat "\$cachepath/exit" 2>/dev/null)
+      out=\$(cat "\$cachepath/out" 2>/dev/null) || true
+      err=\$(cat "\$cachepath/err" 2>/dev/null) || true
+      exit=\$(cat "\$cachepath/exit" 2>/dev/null) || true
+
       if [[ "\$exit" == "" ]]; then
         # No cache, execute in foreground
-        _cache_$func "\$@"
+        bc::_cache::$func "\$@"
         out=\$(cat "\$cachepath/out")
         err=\$(cat "\$cachepath/err")
         exit=\$(cat "\$cachepath/exit")
-      elif [[ "\$(find "\$CACHE_DIR" -path "\$cachepath/exit" -newermt '-10 seconds')" == "" ]]; then
+      elif [[ "\$(find "\$_bc_cache_dir" -path "\$cachepath/exit" -newermt '-10 seconds')" == "" ]]; then
         # Cache exists but is old, refresh in background
-        ( _cache_$func "\$@" & )
+        ( bc::_cache::$func "\$@" & )
       fi
+
       # Output cached result
       printf "%s" "\${out%EOF}"
       printf "%s" "\${err%EOF}" >&2

@@ -1,8 +1,7 @@
 #!/usr/bin/env bats
 
+TMPDIR=$BATS_TMPDIR/cache$$ # ensures each test has its own cache
 source $BATS_TEST_DIRNAME/bash-cache.sh
-CACHE_DIR=$BATS_TMPDIR/cache$$
-ENABLE_CACHED_COMMANDS=true
 
 # Similar to Bats' run function, but invokes the given command in the same
 # shell rather than a subshell. MIT licensed.
@@ -46,29 +45,40 @@ expected() {
   fi
 }
 
-ALREADY_DONE=false
-one_and_done() {
-  if "$ALREADY_DONE"; then
-    echo "one_and_done already called!"
-    return 1
-  fi
-  ALREADY_DONE=true
-  echo once
-  return 0
+CALL_COUNT=0
+expensive_func() {
+  : $(( CALL_COUNT++ ))
 }
 
-@test "without cache second call fails" {
-  one_and_done
-  if one_and_done; then false; fi
+@test "without cache call count increases every time" {
+  expensive_func
+  expensive_func
+  (( CALL_COUNT == 2 ))
+  expensive_func
+  expensive_func
+  (( CALL_COUNT == 4 ))
 }
 
 @test "cached" {
-  echo caching
-  _cache one_and_done
-  # currently need run_sameshell since the cached function is not -e -safe.
-  run_sameshell one_and_done
-  echo "RES - $status - $stdout - $stderr"
-  expected 0 "once" ""
-  run_sameshell one_and_done
-  expected 0 "once" ""
+  bc::cache expensive_func
+  expensive_func
+  expensive_func
+  expensive_func
+  (( CALL_COUNT == 1 ))
+}
+
+@test "caching on and off" {
+  bc::cache expensive_func
+  expensive_func
+  expensive_func
+  expensive_func
+  echo $CALL_COUNT
+  (( CALL_COUNT == 1 ))
+  bc::off
+  expensive_func
+  expensive_func
+  (( CALL_COUNT == 3 ))
+  bc::on
+  expensive_func
+  (( CALL_COUNT == 3 ))
 }
