@@ -7,6 +7,8 @@
 _bc_cache_dir="${TMPDIR:-/tmp}/bash-cache"
 _bc_enabled=true
 _bc_version=(0 1 0)
+: $_bc_enabled # satisfy SC2034
+: ${#_bc_version} # satisfy SC2034
 
 mkdir -p "$_bc_cache_dir"
 
@@ -36,7 +38,7 @@ bc::copy_function() {
 # to their bc::orig:: function.
 bc::on()  { _bc_enabled=true;  }
 bc::off() { _bc_enabled=false; }
-: $_bc_enabled # satisfy SC2034
+
 
 # Given a function - and optionally a list of environment variables - Decorates
 # the function with a short-term caching mechanism, useful for improving the

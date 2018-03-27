@@ -5,3 +5,4 @@ pipelines:
     - step:
         script:
           - bats .
+          - shellcheck bash-cache.sh
