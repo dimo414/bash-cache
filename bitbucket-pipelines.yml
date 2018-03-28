@@ -5,4 +5,5 @@ pipelines:
     - step:
         script:
           - bats .
-          - shellcheck bash-cache.sh
+          - bash -c 'shopt -s globstar; shellcheck **/*.sh'
+          - bash bash-cache-dynamic-shellcheck.sh
