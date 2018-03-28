@@ -10,9 +10,10 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
 }
 
 @test "_modtime" {
-  touch -m -t '201801011211.10' "$BATS_TMPDIR/_modtime_test"
+  local timestamp=201801011211.10
+  touch -m -t "$timestamp" "$BATS_TMPDIR/_modtime_test"
   modtime=$(bc::_modtime "$BATS_TMPDIR/_modtime_test")
-  [[ "$modtime" == "1514837470" ]]
+  [[ "$(date -d "@$modtime" +'%Y%m%d%H%M.%S')" == "$timestamp" ]]
 }
 
 @test "_modtime missing file" {
