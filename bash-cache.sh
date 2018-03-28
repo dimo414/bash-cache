@@ -12,16 +12,37 @@ _bc_version=(0 1 0)
 
 mkdir -p "$_bc_cache_dir"
 
-# Hash function used to key cached results. Implementation is selected
-# dynamically to support different environments (notably OSX provides shasum
-# instead of GNU's sha1sum).
+# Hash function used to key cached results.
+# Implementation is selected dynamically to support different environments (notably OSX provides
+# shasum instead of GNU's sha1sum).
 if command -v sha1sum &> /dev/null; then
-  bc::_hash() { sha1sum <<<"$*"; }
+  bc::_hash() { sha1sum <<<"$*" | tr -cd '0-9a-fA-F'; }
 elif command -v shasum &> /dev/null; then
-  bc::_hash() { shasum <<<"$*"; }
+  bc::_hash() { shasum <<<"$*" | tr -cd '0-9a-fA-F'; }
 else
   bc::_hash() { cksum <<<"$*"; }
 fi
+
+# Gets the time of last file modification in seconds since the epoc. Prints 0 and fails if file does
+# not exist.
+# Implementation is selected dynamically to support different environments (notably BSD/OSX and GNU
+# stat have different semantics)
+# Found https://stackoverflow.com/a/17907126/113632 after implementing this, could also use date
+# as suggested there if these two aren't sufficient.
+if stat -c %Y . &> /dev/null; then
+  bc::_modtime() { stat -c %Y "$@" 2>/dev/null || { echo 0; return 1; }; } # GNU stat
+else
+  bc::_modtime() { stat -f %m "$@" 2>/dev/null || { echo 0; return 1; }; } # BSD/OSX stat
+fi
+
+# Suceeds if the given FILE is less than SECONDS old (according to its modtime)
+bc::_newer_than() {
+  local modtime curtime seconds
+  modtime=$(bc::_modtime "${1:?Must provide a FILE}") || return
+  curtime=$(date +'%s') || return
+  seconds=${2:?Must provide a number of SECONDS}
+  (( modtime > curtime - seconds ))
+}
 
 # Given a name and an existing function, create a new function called name that
 # executes the same commands as the initial function.
@@ -90,7 +111,7 @@ EOF
       (find "\$_bc_cache_dir" -not -path "\$_bc_cache_dir" -not -newermt '-1 minute' -delete &)
 
       local arghash cachepath
-      arghash=\$(bc::_hash "\${*}::${env}" | tr -cd '0-9a-fA-F')
+      arghash=\$(bc::_hash "\${*}::${env}")
       cachepath=\$_bc_cache_dir/\$arghash
 
       # Read from cache - capture output once to avoid races
@@ -105,7 +126,7 @@ EOF
         out=\$(cat "\$cachepath/out")
         err=\$(cat "\$cachepath/err")
         exit=\$(cat "\$cachepath/exit")
-      elif [[ "\$(find "\$_bc_cache_dir" -path "\$cachepath/exit" -newermt '-10 seconds')" == "" ]]; then
+      elif ! bc::_newer_than "\$cachepath/exit" 10; then
         # Cache exists but is old, refresh in background
         ( bc::_cache::$func "\$@" & )
       fi

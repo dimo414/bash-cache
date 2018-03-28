@@ -1,10 +1,15 @@
 #!/usr/bin/env bats
+#
+# Integration tests of overall caching behavior. See bc-unit-tests.bats for per-function tests.
+#
+# Note most of these tests assumes the test takes less than 10 seconds (the background-refresh time)
+# ideally we could configure the stale cache threshold for the test so this is less brittle.
 
 TMPDIR=$BATS_TMPDIR/cache$$ # ensures each test has its own cache
 source $BATS_TEST_DIRNAME/bash-cache.sh
 
 # Similar to Bats' run function, but invokes the given command in the same
-# shell rather than a subshell. MIT licensed.
+# shell rather than a subshell. Bats' is MIT licensed.
 run_sameshell() {
   local e E T oldIFS
   [[ ! "$-" =~ e ]] || e=1
@@ -45,18 +50,30 @@ expected() {
   fi
 }
 
-CALL_COUNT=0
+# Use a file to track the number of invocations of expensive_func in order to support subshells
+# Number of lines in the file indicates the number of times it's been called
+CALL_COUNT_FILE="$TMPDIR/call_count_file"
+touch "$CALL_COUNT_FILE"
+
 expensive_func() {
-  : $(( CALL_COUNT++ ))
+  # Output the expected new count before actually writing, since there could be a race
+  # This way the echo'ed count will never be *higher* than expected (it could be lower)
+  echo "$(($(call_count) + 1))"
+  echo >> "$CALL_COUNT_FILE" # atomically write one more line to the file
+
+}
+
+call_count() {
+  wc -l < "$CALL_COUNT_FILE" || echo 0
 }
 
 @test "without cache call count increases every time" {
   expensive_func
   expensive_func
-  (( CALL_COUNT == 2 ))
+  (( $(call_count) == 2 ))
   expensive_func
   expensive_func
-  (( CALL_COUNT == 4 ))
+  (( $(call_count) == 4 ))
 }
 
 @test "cached" {
@@ -64,7 +81,7 @@ expensive_func() {
   expensive_func
   expensive_func
   expensive_func
-  (( CALL_COUNT == 1 ))
+  (( $(call_count) == 1 ))
 }
 
 @test "caching on and off" {
@@ -72,13 +89,32 @@ expensive_func() {
   expensive_func
   expensive_func
   expensive_func
-  echo $CALL_COUNT
-  (( CALL_COUNT == 1 ))
+  (( $(call_count) == 1 ))
   bc::off
   expensive_func
   expensive_func
-  (( CALL_COUNT == 3 ))
+  (( $(call_count) == 3 ))
   bc::on
   expensive_func
-  (( CALL_COUNT == 3 ))
+  (( $(call_count) == 3 ))
+}
+
+@test "refresh cache in backgound" {
+  bc::cache expensive_func
+  expensive_func
+  # mark whole cache stale
+  find "$TMPDIR" -exec touch -d "11 seconds ago" {} +
+  expensive_func > "$TMPDIR/call_count"
+  output_call_count=$(cat "$TMPDIR/call_count")
+  echo OCC $output_call_count
+  (( output_call_count == 1 )) # cached result
+  # somehow need to synchronize on the cache being refreshed - just wait for it to update
+  for i in {1..2}; do
+    echo $(call_count) $i
+    if (( $(call_count) == 2 )); then break; fi
+    sleep 1
+  done
+  (( $(call_count) == 2 )) # cache was ultimately refreshed
+  expensive_func
+  (( $(call_count) == 2 )) # still cached
 }
