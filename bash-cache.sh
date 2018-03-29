@@ -6,7 +6,7 @@
 # Configuration
 _bc_cache_dir="${TMPDIR:-/tmp}/bash-cache"
 _bc_enabled=true
-_bc_version=(0 1 0)
+_bc_version=(0 2 0)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
