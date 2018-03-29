@@ -18,7 +18,7 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
 
 @test "_modtime missing file" {
   run bc::_modtime "$BATS_TMPDIR/_modtime_missing_test"
-  (( $status == 1 ))
+  (( status == 1 ))
   [[ "$output" == '0' ]]
 }
 
@@ -26,7 +26,7 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
   # This relies on GNU touch, would need something else for this to pass on OSX
   touch -d '1 minute ago' "$BATS_TMPDIR/_newer_than_test"
   run bc::_newer_than "$BATS_TMPDIR/_newer_than_test" 59
-  (( $status != 0 ))
+  (( status != 0 ))
   [[ -z "$output" ]]
   sleep 5
   # low-risk race that this this test takes 60+ sec...
@@ -37,6 +37,17 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
 
 @test "_newer_than missing file" {
   run bc::_newer_than "$BATS_TMPDIR/_newer_than_missing_test" 1000000
-  (( $status != 0 ))
+  (( status != 0 ))
   [[ -z "$output" ]]
+}
+
+@test "_read_input" {
+  bc::_read_input contents < <(echo foo; printf baz)
+  [[ "$contents" == foo$'\n'baz ]]
+
+  bc::_read_input contents < <(echo foo; echo baz)
+  [[ "$contents" == foo$'\n'baz$'\n' ]]
+
+  bc::_read_input contents < <(printf "foo\0bar")
+  [[ "$contents" == foobar ]] # null char is still dropped
 }

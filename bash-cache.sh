@@ -35,13 +35,28 @@ else
   bc::_modtime() { stat -f %m "$@" 2>/dev/null || { echo 0; return 1; }; } # BSD/OSX stat
 fi
 
-# Suceeds if the given FILE is less than SECONDS old (according to its modtime)
+# Succeeds if the given FILE is less than SECONDS old (according to its modtime)
 bc::_newer_than() {
   local modtime curtime seconds
   modtime=$(bc::_modtime "${1:?Must provide a FILE}") || return
   curtime=$(date +'%s') || return
   seconds=${2:?Must provide a number of SECONDS}
   (( modtime > curtime - seconds ))
+}
+
+# Reads stdin into a variable, accounting for trailing newlines. Avoids needing a subshell or
+# command substitution.
+# See http://stackoverflow.com/a/22607352/113632 and https://stackoverflow.com/a/49552002/113632
+bc::_read_input() {
+  # Use unusual variable names to avoid colliding with a variable name
+  # the user might pass in (notably "contents")
+  local __line __contents __varname
+  __varname=${1:?Must provide a variable to read into}
+   while read -r __line; do
+     __contents="${__contents}${__line}"$'\n'
+   done
+   __contents="${__contents}${__line}" # capture any content after the last newline
+   printf -v "$__varname" '%s' "$__contents"
 }
 
 # Given a name and an existing function, create a new function called name that
@@ -96,10 +111,7 @@ bc::cache() {
       mkdir -p "\$_bc_cache_dir"
       local cmddir
       cmddir=\$(mktemp -d "\$_bc_cache_dir/XXXXXXXXXX") || return
-      bc::orig::$func "\$@" > "\$cmddir/out" 2> "\$cmddir/err"; echo \$? > "\$cmddir/exit"
-      # Add end-of-output marker to preserve trailing newlines
-      printf "EOF" >> "\$cmddir/out"
-      printf "EOF" >> "\$cmddir/err"
+      bc::orig::$func "\$@" > "\$cmddir/out" 2> "\$cmddir/err"; printf '%s' \$? > "\$cmddir/exit"
       ln -sfn "\$cmddir" "\$cachepath" # atomic
     }
 EOF
@@ -115,25 +127,26 @@ EOF
       cachepath=\$_bc_cache_dir/\$arghash
 
       # Read from cache - capture output once to avoid races
+      # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
       local out err exit
-      out=\$(cat "\$cachepath/out" 2>/dev/null) || true
-      err=\$(cat "\$cachepath/err" 2>/dev/null) || true
-      exit=\$(cat "\$cachepath/exit" 2>/dev/null) || true
+      bc::_read_input out 2>/dev/null < "\$cachepath/out" || true
+      bc::_read_input err 2>/dev/null < "\$cachepath/err" || true
+      bc::_read_input exit 2>/dev/null < "\$cachepath/exit" || true
 
       if [[ "\$exit" == "" ]]; then
         # No cache, execute in foreground
         bc::_cache::$func "\$@"
-        out=\$(cat "\$cachepath/out")
-        err=\$(cat "\$cachepath/err")
-        exit=\$(cat "\$cachepath/exit")
+        bc::_read_input out < "\$cachepath/out"
+        bc::_read_input err < "\$cachepath/err"
+        bc::_read_input exit < "\$cachepath/exit"
       elif ! bc::_newer_than "\$cachepath/exit" 10; then
         # Cache exists but is old, refresh in background
         ( bc::_cache::$func "\$@" & )
       fi
 
       # Output cached result
-      printf "%s" "\${out%EOF}"
-      printf "%s" "\${err%EOF}" >&2
+      printf '%s' "\$out"
+      printf '%s' "\$err" >&2
       return "\${exit:-255}"
     }
 EOF

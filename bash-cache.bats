@@ -118,3 +118,31 @@ call_count() {
   expensive_func
   (( $(call_count) == 2 )) # still cached
 }
+
+@test "newline-sensitive" {
+  sensitive_func() {
+    printf foo
+    echo bar >&2
+  }
+  sensitive_func > "$TMPDIR/exp_out" 2> "$TMPDIR/exp_err"
+
+  bc::cache sensitive_func
+  sensitive_func > "$TMPDIR/out" 2> "$TMPDIR/err"
+
+  diff "$TMPDIR/exp_out" "$TMPDIR/out"
+  diff "$TMPDIR/exp_err" "$TMPDIR/err"
+}
+
+@test "exit status" {
+  failing_func() {
+    return 10
+  }
+  bc::cache failing_func
+
+  set +e
+  failing_func
+  status=$?
+  set -e
+
+  (( status == 10 ))
+}
