@@ -86,13 +86,10 @@ bc::off() { _bc_enabled=false; }
 #     ...
 #   } && bc::cache expensive_func PWD
 #
-# This will replace expensive_func with a new fuction that caches the result
-# of calling expensive_func with the same arguments and in the same working
-# directory too often. The original expensive_func can still be called, if
-# necessary, as bc::orig::expensive_func.
-#
-# Reading/writing output to files is tricky, for a breakdown of the issues see
-# http://stackoverflow.com/a/22607352/113632
+# This will replace expensive_func with a new function that caches the result
+# of calling expensive_func frequently with the same arguments and in the same
+# working directory. The original expensive_func is still available as
+# bc::orig::expensive_func.
 #
 # It'd be nice to do something like write out,err,exit to a single file (e.g.
 # base64 encoded, newline separated), but uuencode isn't always installed.
