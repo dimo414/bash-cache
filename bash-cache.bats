@@ -5,7 +5,8 @@
 # Note most of these tests assumes the test takes less than 10 seconds (the background-refresh time)
 # ideally we could configure the stale cache threshold for the test so this is less brittle.
 
-TMPDIR=$BATS_TMPDIR/cache$$ # ensures each test has its own cache
+# Ensure each test has its own cache
+BC_TESTONLY_CACHE_DIR=$(mktemp -d "$BATS_TMPDIR/bash-cache-XXXXXXXXXX")
 source $BATS_TEST_DIRNAME/bash-cache.sh
 
 # Similar to Bats' run function, but invokes the given command in the same
@@ -52,7 +53,7 @@ expected() {
 
 # Use a file to track the number of invocations of expensive_func in order to support subshells
 # Number of lines in the file indicates the number of times it's been called
-CALL_COUNT_FILE="$TMPDIR/call_count_file"
+CALL_COUNT_FILE="$BC_TESTONLY_CACHE_DIR/call_count_file"
 touch "$CALL_COUNT_FILE"
 
 expensive_func() {
@@ -99,13 +100,19 @@ call_count() {
   (( $(call_count) == 3 ))
 }
 
+
 @test "refresh cache in backgound" {
   bc::cache expensive_func
   expensive_func
   # mark whole cache stale
-  find "$TMPDIR" -exec touch -d "11 seconds ago" {} +
-  expensive_func > "$TMPDIR/call_count"
-  output_call_count=$(cat "$TMPDIR/call_count")
+  if touch -A 00 . &> /dev/null; then
+    find "$BC_TESTONLY_CACHE_DIR" -exec touch -A -11 {} + # OSX
+  else
+    find "$BC_TESTONLY_CACHE_DIR" -exec touch -d "11 seconds ago" {} + # linux
+  fi
+
+  expensive_func > "$BATS_TMPDIR/call_count"
+  output_call_count=$(cat "$BATS_TMPDIR/call_count")
   echo OCC $output_call_count
   (( output_call_count == 1 )) # cached result
   # somehow need to synchronize on the cache being refreshed - just wait for it to update
@@ -124,13 +131,13 @@ call_count() {
     printf foo
     echo bar >&2
   }
-  sensitive_func > "$TMPDIR/exp_out" 2> "$TMPDIR/exp_err"
+  sensitive_func > "$BATS_TMPDIR/exp_out" 2> "$BATS_TMPDIR/exp_err"
 
   bc::cache sensitive_func
-  sensitive_func > "$TMPDIR/out" 2> "$TMPDIR/err"
+  sensitive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
 
-  diff "$TMPDIR/exp_out" "$TMPDIR/out"
-  diff "$TMPDIR/exp_err" "$TMPDIR/err"
+  diff "$BATS_TMPDIR/exp_out" "$BATS_TMPDIR/out"
+  diff "$BATS_TMPDIR/exp_err" "$BATS_TMPDIR/err"
 }
 
 @test "exit status" {
