@@ -56,13 +56,18 @@ bc::_newer_than() {
 bc::_read_input() {
   # Use unusual variable names to avoid colliding with a variable name
   # the user might pass in (notably "contents")
-  local __line __contents __varname
-  __varname=${1:?Must provide a variable to read into}
-   while read -r __line; do
-     __contents="${__contents}${__line}"$'\n'
+  : "${1:?Must provide a variable to read into}"
+  if [[ "$1" == '_line' || "$1" == '_contents' ]]; then
+    echo "Cannot store contents to $1, use a different name." >&2
+    return 1
+  fi
+
+  local _line _contents
+   while read -r _line; do
+     _contents="${_contents}${_line}"$'\n'
    done
-   __contents="${__contents}${__line}" # capture any content after the last newline
-   printf -v "$__varname" '%s' "$__contents"
+   _contents="${_contents}${_line}" # capture any content after the last newline
+   printf -v "$1" '%s' "$_contents"
 }
 
 # Given a name and an existing function, create a new function called name that
