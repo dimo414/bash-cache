@@ -6,7 +6,7 @@
 # ideally we could configure the stale cache threshold for the test so this is less brittle.
 
 # Ensure each test has its own cache
-BC_TESTONLY_CACHE_DIR=$(mktemp -d "$BATS_TMPDIR/bash-cache-XXXXXXXXXX")
+_BC_TESTONLY_CACHE_DIR=$(mktemp -d "$BATS_TMPDIR/bash-cache-XXXXXXXXXX")
 source $BATS_TEST_DIRNAME/bash-cache.sh
 
 # Similar to Bats' run function, but invokes the given command in the same
@@ -105,9 +105,9 @@ call_count() {
   expensive_func
   # mark whole cache stale
   if touch -A 00 . &> /dev/null; then
-    find "$BC_TESTONLY_CACHE_DIR" -exec touch -A -11 {} + # OSX
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A -11 {} + # OSX
   else
-    find "$BC_TESTONLY_CACHE_DIR" -exec touch -d "11 seconds ago" {} + # linux
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "11 seconds ago" {} + # linux
   fi
 
   expensive_func > "$BATS_TMPDIR/call_count"

@@ -4,9 +4,13 @@
 # functions. See the README.md for full details.
 
 # Configuration
-_bc_cache_dir="${BC_TESTONLY_CACHE_DIR:-${TMPDIR:-/tmp}/bash-cache-$(id -u)}"
+if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
+  _bc_cache_dir="$_BC_TESTONLY_CACHE_DIR"
+else
+  _bc_cache_dir="${BC_CACHE_DIR:-${TMPDIR:-/tmp}}/bash-cache-$(id -u)"
+fi
 _bc_enabled=true
-_bc_version=(0 2 0)
+_bc_version=(0 3 0)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
