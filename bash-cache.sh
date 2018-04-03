@@ -4,13 +4,15 @@
 # functions. See the README.md for full details.
 
 # Configuration
-_bc_cache_dir="${BC_TESTONLY_CACHE_DIR:-${TMPDIR:-/tmp}/bash-cache}"
+_bc_cache_dir="${BC_TESTONLY_CACHE_DIR:-${TMPDIR:-/tmp}/bash-cache-$(id -u)}"
 _bc_enabled=true
 _bc_version=(0 2 0)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
 mkdir -p "$_bc_cache_dir"
+# Cache dir should only be accessible to current user
+chmod 700 "$_bc_cache_dir"
 
 # Hash function used to key cached results.
 # Implementation is selected dynamically to support different environments (notably OSX provides

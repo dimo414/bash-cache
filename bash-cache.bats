@@ -53,8 +53,7 @@ expected() {
 
 # Use a file to track the number of invocations of expensive_func in order to support subshells
 # Number of lines in the file indicates the number of times it's been called
-CALL_COUNT_FILE="$BC_TESTONLY_CACHE_DIR/call_count_file"
-touch "$CALL_COUNT_FILE"
+CALL_COUNT_FILE=$(mktemp)
 
 expensive_func() {
   # Output the expected new count before actually writing, since there could be a race
@@ -124,6 +123,16 @@ call_count() {
   (( $(call_count) == 2 )) # cache was ultimately refreshed
   expensive_func
   (( $(call_count) == 2 )) # still cached
+}
+
+@test "no debug output" {
+  noop_func() { :; }
+
+  bc::cache noop_func
+  noop_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+
+  diff <(:) "$BATS_TMPDIR/out"
+  diff <(:) "$BATS_TMPDIR/err"
 }
 
 @test "newline-sensitive" {
