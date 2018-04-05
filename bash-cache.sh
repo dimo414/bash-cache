@@ -14,9 +14,12 @@ _bc_version=(0 3 0)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
-mkdir -p "$_bc_cache_dir"
-# Cache dir should only be accessible to current user
-chmod 700 "$_bc_cache_dir"
+bc::_ensure_cache_dir_exists() {
+  [[ -d "$_bc_cache_dir" ]] && return
+  mkdir -p "$_bc_cache_dir" &&
+    # Cache dir should only be accessible to current user
+    chmod 700 "$_bc_cache_dir"
+}
 
 # Hash function used to key cached results.
 # Implementation is selected dynamically to support different environments (notably OSX provides
@@ -116,7 +119,7 @@ bc::cache() {
   eval "$(cat <<EOF
     bc::_cache::$func() {
       : "\${cachepath:?"Must provide a cachepath to link to as an environment variable"}"
-      mkdir -p "\$_bc_cache_dir"
+      bc::_ensure_cache_dir_exists
       local cmddir
       cmddir=\$(mktemp -d "\$_bc_cache_dir/XXXXXXXXXX") || return
       bc::orig::$func "\$@" > "\$cmddir/out" 2> "\$cmddir/err"; printf '%s' \$? > "\$cmddir/exit"
@@ -129,9 +132,8 @@ EOF
       \$_bc_enabled || { bc::orig::$func "\$@"; return; }
       ( bc::_cleanup & ) # Clean up stale caches in the background
 
-      local arghash cachepath
-      arghash=\$(bc::_hash "\${*}::${env}")
-      cachepath=\$_bc_cache_dir/\$arghash
+      local cachepath
+      cachepath=\$_bc_cache_dir/\$(bc::_hash "\${*}::${env}")
 
       # Read from cache - capture output once to avoid races
       # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
