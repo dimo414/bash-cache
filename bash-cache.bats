@@ -67,6 +67,16 @@ call_count() {
   wc -l < "$CALL_COUNT_FILE" || echo 0
 }
 
+wait_for_call_count() {
+  # somehow need to synchronize on the cache being refreshed - just wait for it to update
+  for i in {1..2}; do
+    echo $(call_count) $i
+    if (( $(call_count) == $1 )); then break; fi
+    sleep 1
+  done
+  (( $(call_count) == $1 )) # cache was ultimately refreshed
+}
+
 # mark whole cache stale
 stale_cache() {
   : ${1:?number of seconds old}
@@ -119,13 +129,7 @@ stale_cache() {
   output_call_count=$(expensive_func)
   echo OCC $output_call_count
   (( output_call_count == 1 )) # cached result
-  # somehow need to synchronize on the cache being refreshed - just wait for it to update
-  for i in {1..2}; do
-    echo $(call_count) $i
-    if (( $(call_count) == 2 )); then break; fi
-    sleep 1
-  done
-  (( $(call_count) == 2 )) # cache was ultimately refreshed
+  wait_for_call_count 2
   expensive_func
   (( $(call_count) == 2 )) # still cached
 }
@@ -188,4 +192,16 @@ stale_cache() {
   set -e
 
   (( status == 10 ))
+}
+
+@test "warm cache" {
+  bc::cache expensive_func
+  bc::warm::expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  wait_for_call_count 1
+
+  diff /dev/null "$BATS_TMPDIR/out"
+  diff /dev/null "$BATS_TMPDIR/err"
+
+  expensive_func
+  (( $(call_count) == 1 )) # already cached
 }

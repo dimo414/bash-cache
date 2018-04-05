@@ -69,6 +69,11 @@ improvement.
 If needed, the original function can be invoked via `bc::orig::FUNCTION_NAME` (e.g.
 `bc::orig::my_expensive_function`).
 
+### Warming the cache
+
+If you anticipate a function will be called shortly you can warm the cache by calling
+`bc::warm::FUNCTION_NAME`. This invokes the function in the background and caches its output.
+
 ## Other Functions
 
 ### `bc::copy_function`

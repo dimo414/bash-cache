@@ -127,12 +127,22 @@ bc::cache() {
     env="$env:\$$v"
   done
   eval "$(cat <<EOF
+    bc::warm::$func() {
+      ( {
+        local cachepath
+        cachepath="\$_bc_cache_dir/\$(bc::_hash "\${*}::${env}")"
+        bc::_write_cache "$func" "\$@"
+       } & )
+    }
+EOF
+  )"
+  eval "$(cat <<EOF
     $func() {
       \$_bc_enabled || { bc::orig::$func "\$@"; return; }
       ( bc::_cleanup & ) # Clean up stale caches in the background
 
       local cachepath
-      cachepath=\$_bc_cache_dir/\$(bc::_hash "\${*}::${env}")
+      cachepath="\$_bc_cache_dir/\$(bc::_hash "\${*}::${env}")"
 
       # Read from cache - capture output once to avoid races
       # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
