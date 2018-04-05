@@ -67,6 +67,16 @@ call_count() {
   wc -l < "$CALL_COUNT_FILE" || echo 0
 }
 
+# mark whole cache stale
+stale_cache() {
+  : ${1:?number of seconds old}
+  if touch -A 00 . &> /dev/null; then
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A "-$1" {} + # OSX
+  else
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "$1 seconds ago" {} + # linux
+  fi
+}
+
 @test "without cache call count increases every time" {
   expensive_func
   expensive_func
@@ -103,15 +113,10 @@ call_count() {
 @test "refresh cache in backgound" {
   bc::cache expensive_func
   expensive_func
-  # mark whole cache stale
-  if touch -A 00 . &> /dev/null; then
-    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A -11 {} + # OSX
-  else
-    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "11 seconds ago" {} + # linux
-  fi
+  stale_cache 11
 
-  expensive_func > "$BATS_TMPDIR/call_count"
-  output_call_count=$(cat "$BATS_TMPDIR/call_count")
+
+  output_call_count=$(expensive_func)
   echo OCC $output_call_count
   (( output_call_count == 1 )) # cached result
   # somehow need to synchronize on the cache being refreshed - just wait for it to update
@@ -123,6 +128,28 @@ call_count() {
   (( $(call_count) == 2 )) # cache was ultimately refreshed
   expensive_func
   (( $(call_count) == 2 )) # still cached
+}
+
+@test "cleanup stale cache data" {
+  bc::cache expensive_func
+  expensive_func
+  expensive_func a
+  expensive_func b
+
+  call_count=$(call_count)
+  cached_files=$(find "$_BC_TESTONLY_CACHE_DIR" | wc -l)
+
+  bc::_cleanup # does nothing
+  (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) == cached_files ))
+
+  stale_cache 61
+  expensive_func
+  while ! bc::_newer_than "$_BC_TESTONLY_CACHE_DIR/cleanup" 60; do :; done
+  (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) < cached_files ))
+
+  stale_cache 61
+  bc::_cleanup
+  (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) == 2 ))
 }
 
 @test "no debug output" {

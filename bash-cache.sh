@@ -127,8 +127,7 @@ EOF
   eval "$(cat <<EOF
     $func() {
       \$_bc_enabled || { bc::orig::$func "\$@"; return; }
-      # Clean up stale caches in the background
-      (find "\$_bc_cache_dir" -not -path "\$_bc_cache_dir" -not -newermt '-1 minute' -delete &)
+      ( bc::_cleanup & ) # Clean up stale caches in the background
 
       local arghash cachepath
       arghash=\$(bc::_hash "\${*}::${env}")
@@ -159,4 +158,13 @@ EOF
     }
 EOF
   )"
+}
+
+bc::_cleanup() {
+  bc::_newer_than "$_bc_cache_dir/cleanup" 60 && return
+  touch "$_bc_cache_dir/cleanup"
+  cd / || return # necessary because find will cd back to the cwd, which can fail
+  find "$_bc_cache_dir" -not -path "$_bc_cache_dir" -not -newermt '-1 minute' -delete
+  find "$_bc_cache_dir" -xtype l -delete
+  cd - > /dev/null || return
 }
