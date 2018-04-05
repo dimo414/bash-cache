@@ -89,6 +89,17 @@ bc::copy_function() {
 bc::on()  { _bc_enabled=true;  }
 bc::off() { _bc_enabled=false; }
 
+# Captures function output and writes to disc
+bc::_write_cache() {
+  func=${1:?Must provide a function to cache}
+  : "${cachepath:?Must provide a cachepath to link to as an environment variable}"
+  bc::_ensure_cache_dir_exists
+  local cmddir
+  cmddir=$(mktemp -d "$_bc_cache_dir/XXXXXXXXXX") || return
+  "bc::orig::$func" "$@" > "$cmddir/out" 2> "$cmddir/err"; printf '%s' $? > "$cmddir/exit"
+  ln -sfn "$cmddir" "$cachepath" # atomic
+}
+
 
 # Given a function - and optionally a list of environment variables - Decorates
 # the function with a short-term caching mechanism, useful for improving the
@@ -112,21 +123,9 @@ bc::cache() {
   shift
   bc::copy_function "${func}" "bc::orig::${func}" || return
   local env="${func}:"
-  for v in "$@"
-  do
+  for v in "$@"; do
     env="$env:\$$v"
   done
-  eval "$(cat <<EOF
-    bc::_cache::$func() {
-      : "\${cachepath:?"Must provide a cachepath to link to as an environment variable"}"
-      bc::_ensure_cache_dir_exists
-      local cmddir
-      cmddir=\$(mktemp -d "\$_bc_cache_dir/XXXXXXXXXX") || return
-      bc::orig::$func "\$@" > "\$cmddir/out" 2> "\$cmddir/err"; printf '%s' \$? > "\$cmddir/exit"
-      ln -sfn "\$cmddir" "\$cachepath" # atomic
-    }
-EOF
-  )"
   eval "$(cat <<EOF
     $func() {
       \$_bc_enabled || { bc::orig::$func "\$@"; return; }
@@ -144,13 +143,13 @@ EOF
 
       if [[ "\$exit" == "" ]]; then
         # No cache, execute in foreground
-        bc::_cache::$func "\$@"
+        bc::_write_cache "$func" "\$@"
         bc::_read_input out < "\$cachepath/out"
         bc::_read_input err < "\$cachepath/err"
         bc::_read_input exit < "\$cachepath/exit"
       elif ! bc::_newer_than "\$cachepath/exit" 10; then
         # Cache exists but is old, refresh in background
-        ( bc::_cache::$func "\$@" & )
+        ( bc::_write_cache "$func" "\$@" & )
       fi
 
       # Output cached result
