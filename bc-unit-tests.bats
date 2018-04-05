@@ -22,6 +22,10 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
   [[ "$output" == '0' ]]
 }
 
+@test "_now" {
+  (( $(bc::_now) > 0 )) # not worth testing further...
+}
+
 @test "_newer_than" {
   # This relies on GNU touch, would need something else for this to pass on OSX
   touch -d '1 minute ago' "$BATS_TMPDIR/_newer_than_test"

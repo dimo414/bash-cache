@@ -44,11 +44,17 @@ else
   bc::_modtime() { stat -f %m "$@" 2>/dev/null || { echo 0; return 1; }; } # BSD/OSX stat
 fi
 
+if printf "%(%s)T" &> /dev/null; then
+  bc::_now() { printf "%(%s)T"; } # Modern Bash
+else
+  bc::_now() { date +'%s'; } # Fallback
+fi
+
 # Succeeds if the given FILE is less than SECONDS old (according to its modtime)
 bc::_newer_than() {
   local modtime curtime seconds
   modtime=$(bc::_modtime "${1:?Must provide a FILE}") || return
-  curtime=$(date +'%s') || return
+  curtime=$(bc::_now) || return
   seconds=${2:?Must provide a number of SECONDS}
   (( modtime > curtime - seconds ))
 }
