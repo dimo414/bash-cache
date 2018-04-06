@@ -10,7 +10,7 @@ else
   _bc_cache_dir="${BC_CACHE_DIR:-${TMPDIR:-/tmp}}/bash-cache-$(id -u)"
 fi
 _bc_enabled=true
-_bc_version=(0 4 0)
+_bc_version=(0 4 1)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
@@ -178,6 +178,7 @@ EOF
 }
 
 bc::_cleanup() {
+  [[ -d "$_bc_cache_dir" ]] || return
   bc::_newer_than "$_bc_cache_dir/cleanup" 60 && return
   touch "$_bc_cache_dir/cleanup"
   cd / || return # necessary because find will cd back to the cwd, which can fail
