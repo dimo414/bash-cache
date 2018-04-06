@@ -44,8 +44,8 @@ else
   bc::_modtime() { stat -f %m "$@" 2>/dev/null || { echo 0; return 1; }; } # BSD/OSX stat
 fi
 
-if printf "%(%s)T" &> /dev/null; then
-  bc::_now() { printf "%(%s)T"; } # Modern Bash
+if printf "%(%s)T" -1 &> /dev/null; then
+  bc::_now() { printf "%(%s)T" -1; } # Modern Bash
 else
   bc::_now() { date +'%s'; } # Fallback
 fi
