@@ -5,8 +5,7 @@
 # Note that inline comments are not preserved making it difficult to suppress warnings. It may be
 # necessary to manipulate dynamic.sh before invoking shellcheck.
 
-DIR="${TMPFILE:-/tmp}/bash-cache-test"
-mkdir "$DIR"
+DIR=$(mktemp -d "${TMPDIR:-/tmp}/bc-benchmark-XXXXXX")
 trap 'rm -rf "$DIR"' EXIT
 
 # https://stackoverflow.com/a/246128/113632
@@ -15,12 +14,7 @@ source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/bash-cache.sh"
 
 declare -F | cut -d' ' -f3 | sort > "$DIR/orig_func.txt"
 
-foobar() { :; }
-
-bc::cache foobar
-
-#declare -F | sort > "$DIR/new_func.txt"
-
+foobar() { :; } && bc::cache foobar
 
 printf "Checking dynamic functions:"
 printf '#!/bin/bash\n' > "$DIR/dynamic.sh"
