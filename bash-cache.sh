@@ -10,7 +10,7 @@ else
   _bc_cache_dir="${BC_CACHE_DIR:-${TMPDIR:-/tmp}}/bash-cache-$(id -u)"
 fi
 _bc_enabled=true
-_bc_version=(0 4 2)
+_bc_version=(0 5 0)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
