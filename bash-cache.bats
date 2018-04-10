@@ -244,3 +244,45 @@ stale_cache() {
   expensive_func
   (( $(call_count) == 1 )) # already cached
 }
+
+@test "benchmark" {
+  bc::_time() { "$@" &> /dev/null; echo 1234; }
+  check_output() {
+    diff <(printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' 1234 1234 1234) \
+      "$BATS_TMPDIR/out"
+    diff /dev/null "$BATS_TMPDIR/err"
+  }
+
+  bc::benchmark expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  ! declare -F bc::orig::expensive_func
+  (( $(call_count) == 2 ))
+  check_output
+
+  bc::cache expensive_func
+  bc::benchmark expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  (( $(call_count) == 4 ))
+  check_output
+}
+
+@test "benchmark uses-args" {
+  # writes n lines to the call count file
+  multi_expensive_func() {
+    echo "args: $*"
+    local num=${1:-1}
+    while (( num > 0 )); do
+      : $(( num-- ))
+      echo >> "$CALL_COUNT_FILE"
+   done
+  }
+
+  multi_expensive_func 2
+  (( $(call_count) == 2 ))
+
+  # each benchmark call should trigger 2x writes, for the raw and cold calls
+  bc::benchmark multi_expensive_func
+  call_count
+  (( $(call_count) == 4 ))
+  bc::benchmark multi_expensive_func 3
+  call_count
+  (( $(call_count) == 10 ))
+}

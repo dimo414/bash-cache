@@ -188,3 +188,42 @@ EOF
 EOF
   )"
 }
+
+# Prints the real-time to execute the given command, discarding its output.
+bc::_time() {
+  (
+    TIMEFORMAT=%R
+    time "$@" &> /dev/null
+  ) 2>&1
+}
+
+# Benchmarks a function, printing the function's raw runtime as well as with a cold and warm cache.
+# Runs in a subshell and can be used with any function, whether or not it's been cached already.
+bc::benchmark() {
+  local func=${1:?Must specify a function to benchmark}
+  shift
+  if ! declare -F "$func" &> /dev/null; then
+    echo "No such function ${func}" >&2
+    return 1
+  fi
+  # Drop into a subshell so the benchmark doesn't affect the calling shell
+  (
+    _bc_cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/bc-benchmark-XXXXXX") || return
+    TIMEFORMAT='%R'
+
+    # Undo the caching if $func has already been cached - no-op otherwise
+    bc::copy_function "bc::orig::${func}" "${func}" &> /dev/null || true
+    # Cache (or re-cache) the function
+    # Doesn't include any env vars in the key, which is probably fine for most benchmarks
+    bc::cache "${func}"
+
+    local raw cold warm
+    raw="$(bc::_time "bc::orig::${func}" "$@")"
+    cold="$(bc::_time "$func" "$@")"
+    warm="$(bc::_time "$func" "$@")"
+
+    printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' "$raw" "$cold" "$warm"
+
+    rm -rf "$_bc_cache_dir" # not the "real" cache dir
+  )
+}

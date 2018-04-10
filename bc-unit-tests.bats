@@ -55,3 +55,9 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
   bc::_read_input contents < <(printf "foo\0bar")
   [[ "$contents" == foobar ]] # null char is still dropped
 }
+
+@test "_time" {
+  true=1
+  duration=$(bc::_time sleep 1)
+  [[ "$(bc <<<"$duration >= 1")" == $true ]]
+}

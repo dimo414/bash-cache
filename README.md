@@ -61,8 +61,8 @@ The cache is (currently) stored on-disk, which is *much* slower than most simple
 Generally speaking functions which benefit from caching are doing disk or network I/O that
 exceeds the overhead of reading and writing to the cache.
 
-You should benchmark your functions with and without caching to ensure you see a meaningful
-improvement.
+You should benchmark your functions with and without caching (see `bc::benchmark`) to ensure you see
+a meaningful improvement before deciding to enable caching.
 
 ### Calling the original function
 
@@ -75,6 +75,17 @@ If you anticipate a function will be called shortly you can warm the cache by ca
 `bc::warm::FUNCTION_NAME`. This invokes the function in the background and caches its output.
 
 ## Other Functions
+
+### `bc::benchmark`
+
+Benchmarks a function without caching enabled, and with a cold and warm cache. This allows you to
+see the overhead introduced by Bash Cache and decide if it's beneficial for your function. In local
+testing a cold cache introduced approximately .15s of overhead, and a warm cache call takes
+approximately .1s to complete. Be sure to benchmark locally; it's possible you will see significant
+differences on your machine.
+
+This function runs in a subshell against a clean cache directory, and works for any function - you
+do not need to have previously called `bc::cache`.
 
 ### `bc::copy_function`
 
