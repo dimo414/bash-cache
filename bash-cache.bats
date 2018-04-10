@@ -60,7 +60,6 @@ expensive_func() {
   # This way the echo'ed count will never be *higher* than expected (it could be lower)
   echo "$(($(call_count) + 1))"
   echo >> "$CALL_COUNT_FILE" # atomically write one more line to the file
-
 }
 
 call_count() {
@@ -102,6 +101,26 @@ stale_cache() {
   expensive_func
   expensive_func
   (( $(call_count) == 1 ))
+}
+
+@test "cached respects args" {
+  bc::cache expensive_func
+  expensive_func
+  expensive_func a
+  (( $(call_count) == 2 ))
+  expensive_func a
+  (( $(call_count) == 2 ))
+}
+
+@test "cached respects env" {
+  env_var=foo
+  bc::cache expensive_func env_var
+  expensive_func
+  env_var=bar
+  expensive_func
+  (( $(call_count) == 2 ))
+  expensive_func
+  (( $(call_count) == 2 ))
 }
 
 @test "caching on and off" {
@@ -164,6 +183,26 @@ stale_cache() {
 
   diff <(:) "$BATS_TMPDIR/out"
   diff <(:) "$BATS_TMPDIR/err"
+}
+
+@test "args preserved" {
+  args_func() {
+    # TODO this fails because of the extra space. Need to figure out why.
+    #echo "args[$#]: $*"
+    echo "args[$#]:$*"
+  }
+  bc::cache args_func
+
+  check_same_output() {
+    bc::orig::args_func "$@" > "$BATS_TMPDIR/exp_out" 2> "$BATS_TMPDIR/exp_err"
+    args_func "$@" > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+    diff -u "$BATS_TMPDIR/exp_out" "$BATS_TMPDIR/out"
+    diff "$BATS_TMPDIR/exp_err" "$BATS_TMPDIR/err"
+  }
+
+  check_same_output
+  check_same_output 1
+  check_same_output "1 2" 3
 }
 
 @test "newline-sensitive" {
