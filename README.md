@@ -64,8 +64,8 @@ overhead of reading and writing to the cache.
 You should benchmark your functions with and without caching (see `bc::benchmark`) to ensure you see
 a meaningful improvement before deciding to enable caching. Caching performance can differ
 drastically across machines. Notably, if the cache directory (under `/tmp` or `TMPDIR` by default)
-are on a [`tmpfs`](https://en.wikipedia.org/wiki/Tmpfs) or a solid-state drive cache performance
-will be significantly better than reading and writing to a spinning disk.
+is on a [`tmpfs`](https://en.wikipedia.org/wiki/Tmpfs) or a solid-state drive performance will be
+significantly better than reading and writing to a spinning disk.
 
 ### Calling the original function
 
@@ -76,6 +76,14 @@ If needed, the original function can be invoked via `bc::orig::FUNCTION_NAME` (e
 
 If you anticipate a function will be called shortly you can warm the cache by calling
 `bc::warm::FUNCTION_NAME`. This invokes the function in the background and caches its output.
+
+### Cleanup
+
+A cleanup task is run regularly to remove stale cache data, however no attempt is made to clean up
+the cache directory on exit since by design the cache can be shared by multiple processes. By
+default cached data is stored in a temp directory that the OS will clean up from time to time
+(generally on reboot), but if you override the cache directory via `BC_CACHE_DIR` you may want to
+clean up the directory yourself.
 
 ## Other Functions
 
