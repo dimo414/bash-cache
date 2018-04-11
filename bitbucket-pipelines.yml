@@ -7,4 +7,3 @@ pipelines:
           - bats .
           - bash -c 'shopt -s globstar; shellcheck **/*.sh'
           - bash bash-cache-dynamic-shellcheck.sh
-          - bash bash-cache-benchmark.sh
