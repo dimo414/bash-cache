@@ -140,7 +140,7 @@ bc::_cleanup() {
 bc::cache() {
   func="${1:?"Must provide a function name to cache"}"; shift
   bc::copy_function "${func}" "bc::orig::${func}" || return
-  local env="${func}:"
+  local env="${func}:" v
   for v in "$@"; do
     env="$env:\$$v"
   done
