@@ -9,17 +9,19 @@ if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
 else
   _bc_cache_dir="${BC_CACHE_DIR:-${TMPDIR:-/tmp}}/bash-cache-$(id -u)"
 fi
+_bc_locks_dir="${_bc_cache_dir}.locks"
 _bc_enabled=true
 _bc_version=(0 5 0)
 : $_bc_enabled # satisfy SC2034
 : ${#_bc_version} # satisfy SC2034
 
-# Ensures the cache dir exists. If it does not creates the directory and restricts its permissions.
-bc::_ensure_cache_dir_exists() {
-  [[ -d "$_bc_cache_dir" ]] && return
-  mkdir -p "$_bc_cache_dir" &&
+# Ensures the dir exists. If it does not exist creates it and restricts its permissions.
+bc::_ensure_dir_exists() {
+  local dir=${1:?dir}
+  [[ -d "$dir" ]] && return
+  mkdir -p "$dir" &&
     # Cache dir should only be accessible to current user
-    chmod 700 "$_bc_cache_dir"
+    chmod 700 "$dir"
 }
 
 # Hash function used to key cached results.
@@ -102,7 +104,7 @@ bc::off() { _bc_enabled=false; }
 bc::_write_cache() {
   func=${1:?Must provide a function to cache}; shift
   : "${cachepath:?Must provide a cachepath to link to as an environment variable}"
-  bc::_ensure_cache_dir_exists
+  bc::_ensure_dir_exists "$_bc_cache_dir"
   local cmddir
   cmddir=$(mktemp -d "$_bc_cache_dir/XXXXXXXXXX") || return
   "bc::orig::$func" "$@" > "$cmddir/out" 2> "$cmddir/err"; printf '%s' $? > "$cmddir/exit"
@@ -138,7 +140,7 @@ bc::_cleanup() {
 # It'd be nice to do something like write out,err,exit to a single file (e.g.
 # base64 encoded, newline separated), but uuencode isn't always installed.
 bc::cache() {
-  func="${1:?"Must provide a function name to cache"}"; shift
+  local func="${1:?"Must provide a function name to cache"}"; shift
   bc::copy_function "${func}" "bc::orig::${func}" || return
   local env="${func}:" v
   for v in "$@"; do
@@ -184,6 +186,49 @@ EOF
       printf '%s' "\$out"
       printf '%s' "\$err" >&2
       return "\${exit:-255}"
+    }
+EOF
+  )"
+}
+
+# Further decorates bc::cache with a mutual-exclusion lock. This ensures that
+# only one invocation of the original function is being executed at a time, and
+# that its result will be cached and used by any blocked concurrent invocations.
+#
+# Suggested usage:
+#   non_idempotent_func() {
+#     ...
+#   } && bc::locked_cache non_idempotent_func
+#
+# This will replace non_idempotent_func with a new function that holds a mutex
+# lock before invoking bc::cache's caching mechanism.
+#
+# WARNING: the mutex lock is *advisory*, and may not function correctly on
+# some operating systems (where it degrades to bc::cache), or if a caller
+# intentionally works around it. If you need to rely on locking for correctness
+# prefer to implement appropriate locking yourself.
+bc::locked_cache() {
+  bc::cache "$@" || return
+
+  if ! command -v flock &> /dev/null; then
+    echo "flock not found - bc::locked_cache will not use mutual-exclusion." >&2
+    return 1
+  fi
+
+  func="${1:?"Should be impossible since bc::cache already completed"}"
+  bc::copy_function "${func}" "bc::unlocked::${func}" || return
+
+  bc::_ensure_dir_exists "$_bc_locks_dir"
+  touch "${_bc_locks_dir}/${func}.lock"
+
+  eval "$(cat <<EOF
+    $func() {
+      bc::_ensure_dir_exists "$_bc_locks_dir"
+      local fd
+      (
+        flock \$fd
+        bc::unlocked::${func} "\$@"
+      ) {fd}> "${_bc_locks_dir}/$func.lock"
     }
 EOF
   )"

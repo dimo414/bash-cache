@@ -62,6 +62,11 @@ expensive_func() {
   echo >> "$CALL_COUNT_FILE" # atomically write one more line to the file
 }
 
+slow_expensive_func() {
+  sleep 1
+  expensive_func
+}
+
 call_count() {
   wc -l < "$CALL_COUNT_FILE" || echo 0
 }
@@ -144,13 +149,34 @@ stale_cache() {
   expensive_func
   stale_cache 11
 
-
   output_call_count=$(expensive_func)
   echo OCC $output_call_count
   (( output_call_count == 1 )) # cached result
   wait_for_call_count 2
   expensive_func
   (( $(call_count) == 2 )) # still cached
+}
+
+@test "concurrent calls race" {
+    bc::cache slow_expensive_func
+
+    slow_expensive_func &
+    slow_expensive_func &
+    wait
+    (( $(call_count) == 2 ))
+    slow_expensive_func
+    (( $(call_count) == 2 )) # still cached
+}
+
+@test "concurrent locked calls respect mutex" {
+    bc::locked_cache slow_expensive_func
+
+    slow_expensive_func &
+    slow_expensive_func &
+    wait
+    (( $(call_count) == 1 ))
+    slow_expensive_func
+    (( $(call_count) == 1 )) # still cached
 }
 
 @test "cleanup stale cache data" {

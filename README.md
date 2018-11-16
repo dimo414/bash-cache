@@ -85,6 +85,19 @@ default cached data is stored in a temp directory that the OS will clean up from
 (generally on reboot), but if you override the cache directory via `BC_CACHE_DIR` you may want to
 clean up the directory yourself.
 
+### Locking
+
+By design the caching provided by bash-cache is racy - concurrent invocations may or may not end up
+reusing the same cached value. For most cases (idempotent functions, to be precise) this should be
+sufficient.
+
+For cases where concurrent calls to the backing function are problematic, use `bc::locking_cache`
+instead of `bc::cache`. This behaves identically to `bc::cache` but uses an advisory mutex lock to
+prevent concurrent invocations of the backing function.
+
+Note that needing mutual-exclusion is a **strong** signal that you should be using a more powerful
+language than Bash, and that the locking bash-cache provides is best-effort only.
+
 ## Other Functions
 
 ### `bc::benchmark`
