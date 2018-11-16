@@ -4,12 +4,19 @@
 
 source $BATS_TEST_DIRNAME/bash-cache.sh
 
+skip_osx() {
+  if [[ "$(uname -s)" =~ Darwin ]]; then
+    skip "$@"
+  fi
+}
+
 @test "_hash" {
   hashed=$(bc::_hash "several dangerous/special'chars&#!")
   [[ "$hashed" =~ ^[0-9a-fA-F]+$ ]]
 }
 
 @test "_modtime" {
+  skip_osx "This test relies on GNU date"
   local timestamp=201801011211.10
   touch -m -t "$timestamp" "$BATS_TMPDIR/_modtime_test"
   modtime=$(bc::_modtime "$BATS_TMPDIR/_modtime_test")
@@ -27,7 +34,7 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
 }
 
 @test "_newer_than" {
-  # This relies on GNU touch, would need something else for this to pass on OSX
+  skip_osx "This test relies on GNU touch" # need some other approach for this to pass on OSX
   touch -d '1 minute ago' "$BATS_TMPDIR/_newer_than_test"
   run bc::_newer_than "$BATS_TMPDIR/_newer_than_test" 59
   (( status != 0 ))
@@ -46,6 +53,7 @@ source $BATS_TEST_DIRNAME/bash-cache.sh
 }
 
 @test "_read_input" {
+  skip_osx "Bash read's \0-handling behavior is different on OSX"
   bc::_read_input contents < <(echo foo; printf baz)
   [[ "$contents" == foo$'\n'baz ]]
 
