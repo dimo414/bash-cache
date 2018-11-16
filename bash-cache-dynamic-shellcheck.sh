@@ -14,7 +14,7 @@ source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/bash-cache.sh"
 
 declare -F | cut -d' ' -f3 | sort > "$DIR/orig_func.txt"
 
-foobar() { :; } && bc::cache foobar
+foobar() { :; } && bc::locked_cache foobar
 
 printf "Checking dynamic functions:"
 printf '#!/bin/bash\n' > "$DIR/dynamic.sh"
