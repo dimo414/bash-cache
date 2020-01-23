@@ -2,17 +2,20 @@ name: CI
 
 on: [push]
 
-# TODO split BATS and ShellCheck into separate jobss
 # TODO test against specific versions of Bash
 jobs:
-  ci:
+  Bash5:
     runs-on: ubuntu-latest
     container: dimo414/ci-bash
+    steps:
+      - uses: actions/checkout@v1
+      - run: bash-5 -c 'bats .'
 
+  ShellCheck:
+    runs-on: ubuntu-latest
+    container: dimo414/ci-bash
     steps:
     - uses: actions/checkout@v1
-    - name: BATS
-      run: bats .
     - name: ShellCheck
       run: |
         bash -c 'shopt -s globstar; shellcheck **/*.sh'
