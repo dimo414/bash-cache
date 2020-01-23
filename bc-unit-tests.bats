@@ -53,7 +53,7 @@ skip_osx() {
 }
 
 @test "_read_input" {
-  skip_osx "Bash read's \0-handling behavior is different on OSX"
+  (( BASH_VERSINFO[0] >= 4 )) || skip "Bash read's \0-handling behavior is different before v4"
   bc::_read_input contents < <(echo foo; printf baz)
   [[ "$contents" == foo$'\n'baz ]]
 

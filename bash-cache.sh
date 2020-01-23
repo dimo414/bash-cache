@@ -215,6 +215,12 @@ bc::locked_cache() {
     return 1
   fi
 
+  if (( BASH_VERSINFO[0] < 4 )) || (( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 1 )); then
+    # due to the {fd} syntax below, which assigns a free file descriptor to the fd variable
+    echo "bc::locked_cache cannot use mutual-exclusion on Bash ${BASH_VERSION}" >&2
+    return 2
+  fi
+
   func="${1:?"Should be impossible since bc::cache already completed"}"
   bc::copy_function "${func}" "bc::unlocked::${func}" || return
 
