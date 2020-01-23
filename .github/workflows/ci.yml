@@ -2,7 +2,6 @@ name: CI
 
 on: [push]
 
-# TODO test against specific versions of Bash
 jobs:
   Bash5:
     runs-on: ubuntu-latest
@@ -10,6 +9,18 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - run: bash-5 -c 'bats .'
+  Bash4:
+    runs-on: ubuntu-latest
+    container: dimo414/ci-bash
+    steps:
+      - uses: actions/checkout@v1
+      - run: bash-4 -c 'bats .'
+  Bash3:
+    runs-on: ubuntu-latest
+    container: dimo414/ci-bash
+    steps:
+      - uses: actions/checkout@v1
+      - run: bash-3 -c 'bats .'
 
   ShellCheck:
     runs-on: ubuntu-latest
