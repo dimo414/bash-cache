@@ -3,25 +3,17 @@ name: CI
 on: [push]
 
 jobs:
-  Bash5:
+  Test:
     runs-on: ubuntu-latest
     container: dimo414/ci-bash
+    strategy:
+      matrix:
+        bash-version: [5, 4, 3]
     steps:
       - uses: actions/checkout@v1
-      - run: bash-5 -c 'bats .'
-  Bash4:
-    runs-on: ubuntu-latest
-    container: dimo414/ci-bash
-    steps:
-      - uses: actions/checkout@v1
-      - run: bash-4 -c 'bats .'
-  Bash3:
-    runs-on: ubuntu-latest
-    container: dimo414/ci-bash
-    steps:
-      - uses: actions/checkout@v1
-      - run: bash-3 -c 'bats .'
-
+      - name: "Using bash-${{ matrix.bash-version }}"
+        run: bash-${{ matrix.bash-version }} -c 'bats .'
+    
   ShellCheck:
     runs-on: ubuntu-latest
     container: dimo414/ci-bash
