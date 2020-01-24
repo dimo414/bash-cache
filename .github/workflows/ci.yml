@@ -8,11 +8,11 @@ jobs:
     container: dimo414/ci-bash
     strategy:
       matrix:
-        bash-version: [5, 4, 3]
+        bash-version: [bash-5, bash-4, bash-3]
     steps:
       - uses: actions/checkout@v1
-      - name: "Using bash-${{ matrix.bash-version }}"
-        run: bash-${{ matrix.bash-version }} -c 'bats .'
+      - name: "Using ${{ matrix.bash-version }}"
+        run: ${{ matrix.bash-version }} -c 'bats .'
     
   ShellCheck:
     runs-on: ubuntu-latest
