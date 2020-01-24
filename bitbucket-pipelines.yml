@@ -1,9 +1,0 @@
-image: dimo414/ci-bash
-
-pipelines:
-  default:
-    - step:
-        script:
-          - bats .
-          - bash -c 'shopt -s globstar; shellcheck **/*.sh'
-          - bash bash-cache-dynamic-shellcheck.sh
