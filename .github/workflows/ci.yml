@@ -26,5 +26,5 @@ jobs:
         args: -c "find . -name '*.sh' | xargs shellcheck"
     - uses: actions/upload-artifact@v1
       with:
-        name: dynamic.sh
-        path: dynamic.sh
+        name: generated.sh
+        path: generated.sh
