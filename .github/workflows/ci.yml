@@ -16,10 +16,15 @@ jobs:
     
   ShellCheck:
     runs-on: ubuntu-latest
-    container: dimo414/ci-bash
     steps:
     - uses: actions/checkout@v1
+    - run: bash generate-dynamic.sh
     - name: ShellCheck
-      run: |
-        bash -c 'shopt -s globstar; shellcheck **/*.sh'
-        bash bash-cache-dynamic-shellcheck.sh
+      uses: docker://koalaman/shellcheck-alpine
+      with:
+        entrypoint: sh
+        args: -c "find . -name '*.sh' | xargs shellcheck"
+    - uses: actions/upload-artifact@v1
+      with:
+        name: dynamic.sh
+        path: dynamic.sh
