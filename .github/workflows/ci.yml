@@ -23,7 +23,7 @@ jobs:
       uses: docker://koalaman/shellcheck-alpine
       with:
         entrypoint: sh
-        args: -c "find . -name '*.sh' | xargs shellcheck"
+        args: -c "find . -name '*.sh' -exec shellcheck {} +"
     - uses: actions/upload-artifact@v1
       with:
         name: generated.sh
