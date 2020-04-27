@@ -13,13 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: "Using ${{ matrix.bash-version }}"
-        run: ${{ matrix.bash-version }} -c 'bats .'
+        run: ${{ matrix.bash-version }} -c 'bats test'
     
   ShellCheck:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - run: bash generate-dynamic.sh
+    - run: bash test/generate-dynamic.sh
     - name: ShellCheck
       uses: docker://koalaman/shellcheck-alpine
       with:

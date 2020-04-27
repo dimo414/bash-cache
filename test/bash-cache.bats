@@ -7,7 +7,7 @@
 
 # Ensure each test has its own cache
 _BC_TESTONLY_CACHE_DIR=$(mktemp -d "$BATS_TMPDIR/bash-cache-XXXXXXXXXX")
-source $BATS_TEST_DIRNAME/bash-cache.sh
+source "${BATS_TEST_DIRNAME}/../bash-cache.sh"
 
 # Similar to Bats' run function, but invokes the given command in the same
 # shell rather than a subshell. Bats' is MIT licensed.

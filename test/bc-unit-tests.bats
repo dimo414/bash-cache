@@ -2,7 +2,7 @@
 #
 # Unit tests of individual bash-cache functions, not overall caching semantics.
 
-source $BATS_TEST_DIRNAME/bash-cache.sh
+source "${BATS_TEST_DIRNAME}/../bash-cache.sh"
 
 skip_osx() {
   if [[ "$(uname -s)" =~ Darwin ]]; then

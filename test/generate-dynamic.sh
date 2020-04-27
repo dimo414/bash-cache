@@ -13,7 +13,7 @@ trap 'rm -rf "$DIR"' EXIT
 
 # https://stackoverflow.com/a/246128/113632
 # shellcheck source=/dev/null
-source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/bash-cache.sh"
+source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/../bash-cache.sh" || exit
 
 declare -F | cut -d' ' -f3 | sort > "$DIR/orig_func.txt"
 
