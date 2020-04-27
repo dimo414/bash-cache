@@ -77,7 +77,7 @@ bc::_read_input() {
   fi
 
   local _line _contents
-   while read -r _line; do
+   while IFS='' read -r _line; do
      _contents="${_contents}${_line}"$'\n'
    done
    _contents="${_contents}${_line}" # capture any content after the last newline

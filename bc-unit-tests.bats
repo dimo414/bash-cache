@@ -53,15 +53,23 @@ skip_osx() {
 }
 
 @test "_read_input" {
-  (( BASH_VERSINFO[0] >= 4 )) || skip "Bash read's \0-handling behavior is different before v4"
-  bc::_read_input contents < <(echo foo; printf baz)
-  [[ "$contents" == foo$'\n'baz ]]
+  bc::_read_input contents < <(printf ' foo \nbaz ')
+  printf "Actual: '%s'\nExpect: '%s'\n" "$contents" $' foo \nbaz '
+  [[ "$contents" == $' foo \nbaz ' ]]
 
-  bc::_read_input contents < <(echo foo; echo baz)
-  [[ "$contents" == foo$'\n'baz$'\n' ]]
+  bc::_read_input contents < <(printf ' foo \nbaz \n')
+  [[ "$contents" == $' foo \nbaz \n' ]]
+}
 
-  bc::_read_input contents < <(printf "foo\0bar")
-  [[ "$contents" == foobar ]] # null char is still dropped
+@test "_read_input null chars" {
+  # Bash read's \0-handling behavior changed in v4"
+  if (( BASH_VERSINFO[0] >= 4 )); then
+    bc::_read_input contents < <(printf 'foo\0bar')
+    [[ "$contents" == foobar ]] # null char is dropped, but remaining text preserved
+  else
+    bc::_read_input contents < <(printf 'foo\0bar')
+    [[ "$contents" == foo ]]
+  fi
 }
 
 @test "_time" {
