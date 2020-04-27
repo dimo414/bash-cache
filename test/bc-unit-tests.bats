@@ -54,11 +54,13 @@ skip_osx() {
 
 @test "_read_input" {
   bc::_read_input contents < <(printf ' foo \nbaz ')
-  printf "Actual: '%s'\nExpect: '%s'\n" "$contents" $' foo \nbaz '
   [[ "$contents" == $' foo \nbaz ' ]]
 
   bc::_read_input contents < <(printf ' foo \nbaz \n')
   [[ "$contents" == $' foo \nbaz \n' ]]
+
+  bc::_read_input contents < <(printf ' foo \rbaz \r\n\r')
+  [[ "$contents" == $' foo \rbaz \r\n\r' ]]
 }
 
 @test "_read_input null chars" {

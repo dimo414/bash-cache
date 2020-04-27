@@ -76,12 +76,12 @@ bc::_read_input() {
     return 1
   fi
 
-  local _line _contents
+  local _line _contents=()
    while IFS='' read -r _line; do
-     _contents="${_contents}${_line}"$'\n'
+     _contents+=("$_line"$'\n')
    done
-   _contents="${_contents}${_line}" # capture any content after the last newline
-   printf -v "$1" '%s' "$_contents"
+   # include $_line once more to capture any content after the last newline
+   printf -v "$1" '%s' "${_contents[@]}" "$_line"
 }
 
 # Given a name and an existing function, create a new function called name that
