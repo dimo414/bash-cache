@@ -1,12 +1,12 @@
 # Bash Cache
 
-Bash Cache provides a transparent mechanism for caching, or memoizing, long-running Bash
-functions. Although it can be used for scripting, its primary purpose is to cache the
-results of expensive commands for display in your terminal prompt.
+Bash Cache provides a transparent mechanism for caching, or memoizing, long-running Bash functions.
+Although it can be used for scripting its motivating purpose is to cache the results of expensive
+commands for display in your terminal prompt.
 
-Originally part of [ProfileGem](http://hg.mwdiamond.com/profilegem) and
-[prompt.gem](http://hg.mwdiamond.com/prompt.gem), this functionality has been pulled out into a
-standalone utility.
+Originally part of [ProfileGem](http://git.mwdiamond.com/profilegem) and
+[prompt.gem](http://git.mwdiamond.com/prompt.gem), this functionality has been pulled out
+into a standalone utility.
 
 ## Installation
 
@@ -57,15 +57,15 @@ directory in addition to any arguments to the function.
 
 ### Performance
 
-The cache is (currently) stored on-disk, which is *much* slower than most simple commands. Generally
-speaking functions which benefit from caching are doing disk or network I/O that exceeds the
-overhead of reading and writing to the cache.
+Cached data is stored on-disk, which means accessing the cache will typically be *much* slower than
+directly executing many simple commands. Generally speaking, operations which benefit from caching
+are accessing the disk themselves or doing network I/O. You should benchmark your functions with and
+without caching (see `bc::benchmark`) to ensure you see a meaningful improvement before deciding to
+memoize a particular function.
 
-You should benchmark your functions with and without caching (see `bc::benchmark`) to ensure you see
-a meaningful improvement before deciding to enable caching. Caching performance can differ
-drastically across machines. Notably, if the cache directory (under `/tmp` or `TMPDIR` by default)
-is on a [`tmpfs`](https://en.wikipedia.org/wiki/Tmpfs) or a solid-state drive performance will be
-significantly better than reading and writing to a spinning disk.
+Caching performance can differ drastically across machines. Notably, if the cache directory (under
+`/tmp` or `TMPDIR` by default) is on a [`tmpfs`](https://en.wikipedia.org/wiki/Tmpfs) partition or a
+solid-state drive performance will be significantly better than caching to a spinning disk.
 
 ### Calling the original function
 
