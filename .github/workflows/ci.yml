@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     container: dimo414/ci-bash
     strategy:
+      fail-fast: false
       matrix:
         bash-version: [bash-5, bash-4, bash-3]
     steps:
