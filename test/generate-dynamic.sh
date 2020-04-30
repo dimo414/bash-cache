@@ -22,12 +22,15 @@ declare -F | cut -d' ' -f3 | sort > "$DIR/orig_func.txt"
 expensive() { :; } && bc::locked_cache expensive
 
 printf "Capturing generated functions:"
-printf '#!/bin/bash\n#\n# GENERATED SCRIPT FOR USE WITH SHELLCHECK\n' > "generated.sh"
-# shellcheck disable=SC2016
-printf '_bc_cache_dir=$1\n_bc_enabled=$2\n' >> "generated.sh" # declare config variables
+printf '%s\n' '#!/bin/bash' '#' '# GENERATED SCRIPT FOR USE WITH SHELLCHECK' '' > "generated.sh"
+
+# declare config variables
+printf '# shellcheck disable=SC2034\ndeclare' >> "generated.sh"
+printf ' %s' '_bc_cache_dir' '_bc_locks_dir' '_bc_enabled' >> "generated.sh"
+
 for func in $(comm -13 "$DIR/orig_func.txt" <(declare -F | cut -d' ' -f3 | sort)); do
   printf " %s" "$func"
-  echo >> "generated.sh"
-  type "$func" | tail -n+2 >> "generated.sh"
+  printf '\n\n' >> "generated.sh"
+  declare -f "$func" >> "generated.sh"
 done
 printf '\nWrote generated functions to generated.sh\n'
