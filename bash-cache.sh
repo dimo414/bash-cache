@@ -11,9 +11,8 @@ else
 fi
 _bc_locks_dir="${_bc_cache_dir}.locks"
 _bc_enabled=true
-_bc_version=(0 5 0)
-: $_bc_enabled # satisfy SC2034
-: ${#_bc_version} # satisfy SC2034
+_bc_version=(0 6 0)
+: $_bc_enabled ${#_bc_version} # satisfy SC2034
 
 # Ensures the dir exists. If it does not exist creates it and restricts its permissions.
 bc::_ensure_dir_exists() {
@@ -92,7 +91,7 @@ bc::copy_function() {
   declare -F "$function" &> /dev/null || {
     echo "No such function ${function}" >&2; return 1
   }
-  eval "$(printf "%s()" "$new_name"; declare -f "$function" | tail -n +2)"
+  eval "$(printf '%q()' "$new_name"; declare -f "$function" | tail -n +2)"
 }
 
 # Enables and disables caching - if disabled cached functions delegate directly
@@ -144,51 +143,67 @@ bc::cache() {
   bc::copy_function "${func}" "bc::orig::${func}" || return
   local env="${func}:" v
   for v in "$@"; do
-    env="$env:\$$v"
+    env+="${env}:\$${v}"
   done
-  eval "$(cat <<EOF
-    bc::warm::$func() {
-      ( {
+
+  # This is a function-template pattern suggested in #5, in order to reduce
+  # the amount of code stored in strings for use by eval. The template bodies
+  # are still eval-ed (after replacing placeholders), but this pattern helps
+  # isolate the 'dynamic' behavior to those placeholders. The rest of the
+  # function body is reused exactly as written, and avoids needing to wrestle
+  # with nested quotes/escaping/etc.
+  #
+  # For now these functions are declared inline and unset after use to avoid
+  # polluting the global namespace. It may be better to just declare them as
+  # top-level functions and let them live in the global namespace.
+
+  bc::_warm_template() {
+    ( {
         local cachepath
-        cachepath="\$_bc_cache_dir/\$(bc::_hash "\${*}::${env}")"
-        bc::_write_cache "$func" "\$@"
+        cachepath="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
+        bc::_write_cache "%func%" "$@"
        } & )
-    }
-EOF
-  )"
-  eval "$(cat <<EOF
-    $func() {
-      \$_bc_enabled || { bc::orig::$func "\$@"; return; }
-      ( bc::_cleanup & ) # Clean up stale caches in the background
+  }
 
-      local cachepath
-      cachepath="\$_bc_cache_dir/\$(bc::_hash "\${*}::${env}")"
+  bc::_cache_template() {
+    $_bc_enabled || { bc::orig::%func% "$@"; return; }
+    ( bc::_cleanup & ) # Clean up stale caches in the background
 
-      # Read from cache - capture output once to avoid races
-      # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
-      local out err exit
-      bc::_read_input out 2>/dev/null < "\$cachepath/out" || true
-      bc::_read_input err 2>/dev/null < "\$cachepath/err" || true
-      bc::_read_input exit 2>/dev/null < "\$cachepath/exit" || true
+    local cachepath
+    cachepath="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
 
-      if [[ "\$exit" == "" ]]; then
-        # No cache, execute in foreground
-        bc::_write_cache "$func" "\$@"
-        bc::_read_input out < "\$cachepath/out"
-        bc::_read_input err < "\$cachepath/err"
-        bc::_read_input exit < "\$cachepath/exit"
-      elif ! bc::_newer_than "\$cachepath/exit" 10; then
-        # Cache exists but is old, refresh in background
-        ( bc::_write_cache "$func" "\$@" & )
-      fi
+    # Read from cache - capture output once to avoid races
+    # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
+    local out err exit
+    bc::_read_input out 2>/dev/null < "${cachepath}/out" || true
+    bc::_read_input err 2>/dev/null < "${cachepath}/err" || true
+    bc::_read_input exit 2>/dev/null < "${cachepath}/exit" || true
 
-      # Output cached result
-      printf '%s' "\$out"
-      printf '%s' "\$err" >&2
-      return "\${exit:-255}"
-    }
-EOF
-  )"
+    if [[ "$exit" == "" ]]; then
+      # No cache, execute in foreground
+      bc::_write_cache "%func%" "$@"
+      bc::_read_input out < "${cachepath}/out"
+      bc::_read_input err < "${cachepath}/err"
+      bc::_read_input exit < "${cachepath}/exit"
+    elif ! bc::_newer_than "${cachepath}/exit" 10; then
+      # Cache exists but is old, refresh in background
+      ( bc::_write_cache "%func%" "$@" & )
+    fi
+
+    # Output cached result
+    printf '%s' "$out"
+    printf '%s' "$err" >&2
+    return "${exit:-255}"
+  }
+
+  # shellcheck disable=SC2155
+  local warm_function_body=$(declare -f "bc::_warm_template"  | tail -n +2)
+  # shellcheck disable=SC2155
+  local cache_function_body=$(declare -f "bc::_cache_template"  | tail -n +2)
+  unset -f bc::_warm_template bc::_cache_template
+  eval "$(printf 'bc::warm::%q()\n%s ; %q()\n%s' \
+      "$func" "$warm_function_body" "$func" "$cache_function_body" \
+    | sed -e "s/%env%/${env}/g" -e "s/%func%/${func}/g")"
 }
 
 # Further decorates bc::cache with a mutual-exclusion lock. This ensures that
@@ -227,17 +242,22 @@ bc::locked_cache() {
   bc::_ensure_dir_exists "$_bc_locks_dir"
   touch "${_bc_locks_dir}/${func}.lock"
 
-  eval "$(cat <<EOF
-    $func() {
-      bc::_ensure_dir_exists "$_bc_locks_dir"
-      local fd
-      (
-        flock \$fd
-        bc::unlocked::${func} "\$@"
-      ) {fd}> "${_bc_locks_dir}/$func.lock"
-    }
-EOF
-  )"
+  bc::_locked_template() {
+    bc::_ensure_dir_exists "$_bc_locks_dir"
+    local fd
+    (
+      flock "$fd"
+      bc::unlocked::%func% "$@"
+    # This weird &&%redir% replacement is a hack to allow this template to parse
+    # because earlier Bash versions won't even parse a {fd}> redirect.
+    ) &&%redir% "${_bc_locks_dir}/%func%.lock"
+  }
+
+  # shellcheck disable=SC2155
+  local locked_function_body=$(declare -f "bc::_locked_template"  | tail -n +2)
+  unset -f bc::_locked_template
+  eval "$(printf '%q()\n%s' "$func" "$locked_function_body" \
+    | sed -e "s/%func%/${func}/g" -e 's/&& %redir%/{fd}>/g')"
 }
 
 # Prints the real-time to execute the given command, discarding its output.
