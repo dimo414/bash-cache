@@ -28,7 +28,7 @@ if more than 10 seconds old. In the future these values may be configurable.
 Cached data **is shared across processes** by default; see below for ways to change this.
 
 Some example usages can be seen in the
-[prompt.gem project](https://bitbucket.org/dimo414/prompt.gem/src/default/env_functions.sh).
+[prompt.gem project](https://github.com/dimo414/prompt.gem/blob/master/env_functions.sh).
 
 ### Customizing the cache key
 
@@ -139,7 +139,7 @@ name).
 
 ## Copyright and License
 
-Copyright 2012-2018 Michael Diamond
+Copyright 2012-2020 Michael Diamond
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
