@@ -83,12 +83,14 @@ wait_for_call_count() {
 
 # mark whole cache stale
 stale_cache() {
-  : ${1:?number of seconds old}
+  local seconds
+  seconds=$(bc::_to_seconds "$1") || return
   if touch -A 00 . &> /dev/null; then
-    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A "-$1" {} + # OSX
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A "-${seconds}" {} + # OSX
   else
-    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "$1 seconds ago" {} + # linux
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "${seconds} seconds ago" {} + # linux
   fi
+  bc::_cleanup
 }
 
 @test "without cache call count increases every time" {
@@ -101,7 +103,7 @@ stale_cache() {
 }
 
 @test "cached" {
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   expensive_func
   expensive_func
   expensive_func
@@ -109,7 +111,7 @@ stale_cache() {
 }
 
 @test "cached respects args" {
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   expensive_func
   expensive_func a
   (( $(call_count) == 2 ))
@@ -119,7 +121,7 @@ stale_cache() {
 
 @test "cached respects env" {
   env_var=foo
-  bc::cache expensive_func env_var
+  bc::cache expensive_func 60s 10s env_var
   expensive_func
   env_var=bar
   expensive_func
@@ -129,7 +131,7 @@ stale_cache() {
 }
 
 @test "caching on and off" {
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   expensive_func
   expensive_func
   expensive_func
@@ -145,20 +147,40 @@ stale_cache() {
 
 
 @test "refresh cache in backgound" {
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   expensive_func
-  stale_cache 11
+  stale_cache 11s
 
   output_call_count=$(expensive_func)
-  echo OCC $output_call_count
   (( output_call_count == 1 )) # cached result
   wait_for_call_count 2
   expensive_func
   (( $(call_count) == 2 )) # still cached
 }
 
+@test "differing cache expirations" {
+  cheap_count=0
+  something_cheap() { echo "$(( ++cheap_count ))"; }
+  bc::cache expensive_func 2m 1m
+  bc::cache something_cheap 30s 10s
+  expensive_func
+  something_cheap
+  stale_cache 31s
+
+  expensive_func
+  (( $(call_count) == 1 )) # cached result
+  something_cheap
+  (( cheap_count == 2 )) # not cached
+
+  stale_cache 121s # now cache is invalidated
+  expensive_func
+  (( $(call_count) == 2 ))
+  something_cheap
+  (( cheap_count == 3 )) # not cached
+}
+
 @test "concurrent calls race" {
-    bc::cache slow_expensive_func
+    bc::cache slow_expensive_func 60s 10s
 
     slow_expensive_func &
     slow_expensive_func &
@@ -181,31 +203,38 @@ stale_cache() {
 }
 
 @test "cleanup stale cache data" {
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   expensive_func
   expensive_func a
   expensive_func b
 
-  call_count=$(call_count)
   cached_files=$(find "$_BC_TESTONLY_CACHE_DIR" | wc -l)
 
   bc::_cleanup # does nothing
   (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) == cached_files ))
 
-  stale_cache 61
+  stale_cache 61s
   expensive_func
   while ! bc::_newer_than "$_BC_TESTONLY_CACHE_DIR/cleanup" 60; do :; done
   (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) < cached_files ))
 
-  stale_cache 61
-  bc::_cleanup
-  (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) == 2 ))
+  stale_cache 61s
+  # bc/, bc/cleanup, bc/data, and bc/data/60
+  (( $(find "$_BC_TESTONLY_CACHE_DIR" | wc -l) == 4 ))
+}
+
+@test "cleanup frequency adjusts" {
+  bc::cache expensive_func 10s 0s
+  expensive_func
+  stale_cache 11s
+  expensive_func
+  (( $(call_count) == 2 )) # cache evicted after 11s instead of 60s
 }
 
 @test "no debug output" {
   noop_func() { :; }
 
-  bc::cache noop_func
+  bc::cache noop_func 60s 10s
   noop_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
 
   diff <(:) "$BATS_TMPDIR/out"
@@ -218,7 +247,7 @@ stale_cache() {
     #echo "args[$#]: $*"
     echo "args[$#]:$*"
   }
-  bc::cache args_func
+  bc::cache args_func 60s 10s
 
   check_same_output() {
     bc::orig::args_func "$@" > "$BATS_TMPDIR/exp_out" 2> "$BATS_TMPDIR/exp_err"
@@ -239,7 +268,7 @@ stale_cache() {
   }
   sensitive_func > "$BATS_TMPDIR/exp_out" 2> "$BATS_TMPDIR/exp_err"
 
-  bc::cache sensitive_func
+  bc::cache sensitive_func 60s 10s
   sensitive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
 
   diff "$BATS_TMPDIR/exp_out" "$BATS_TMPDIR/out"
@@ -250,7 +279,7 @@ stale_cache() {
   failing_func() {
     return 10
   }
-  bc::cache failing_func
+  bc::cache failing_func 60s 10s
 
   set +e
   failing_func
@@ -261,7 +290,7 @@ stale_cache() {
 }
 
 @test "warm cache" {
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   bc::warm::expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
   wait_for_call_count 1
 
@@ -285,7 +314,7 @@ stale_cache() {
   (( $(call_count) == 2 ))
   check_output
 
-  bc::cache expensive_func
+  bc::cache expensive_func 60s 10s
   bc::benchmark expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
   (( $(call_count) == 4 ))
   check_output

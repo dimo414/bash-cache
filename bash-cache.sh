@@ -4,15 +4,17 @@
 # functions. See the README.md for full details.
 
 # Configuration
+_bc_enabled=true
+_bc_version=(0 7 0)
 if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
   _bc_cache_dir="$_BC_TESTONLY_CACHE_DIR"
 else
-  _bc_cache_dir="${BC_CACHE_DIR:-${TMPDIR:-/tmp}}/bash-cache-$(id -u)"
+  printf -v _bc_cache_dir '%s/bash-cache-%s.%s-%s' \
+    "${BC_CACHE_DIR:-${TMPDIR:-/tmp}}" "${_bc_version[@]::2}" "$(id -u)"
 fi
 _bc_locks_dir="${_bc_cache_dir}.locks"
-_bc_enabled=true
-_bc_version=(0 6 0)
-: $_bc_enabled ${#_bc_version} # satisfy SC2034
+_bc_cleanup_frequency=60
+: ${#_bc_version} # satisfy SC2034
 
 # Ensures the dir exists. If it does not exist creates it and restricts its permissions.
 bc::_ensure_dir_exists() {
@@ -128,49 +130,95 @@ bc::off() { _bc_enabled=false; }
 # Captures function output and writes to disc
 bc::_write_cache() {
   func=${1:?Must provide a function to cache}; shift
-  : "${cachepath:?Must provide a cachepath to link to as an environment variable}"
-  bc::_ensure_dir_exists "$_bc_cache_dir"
+  : "${cachelink:?}" "${cachedir:?}" # must be set by the calling function
+  bc::_ensure_dir_exists "$cachedir"
   local cmddir
-  cmddir=$(mktemp -d "$_bc_cache_dir/XXXXXXXXXX") || return
+  cmddir=$(mktemp -d "${cachedir}/XXXXXXXXXX") || return
   "bc::orig::$func" "$@" > "$cmddir/out" 2> "$cmddir/err"; printf '%s' $? > "$cmddir/exit"
-  ln -sfn "$cmddir" "$cachepath" # atomic
+  ln -sfn "$cmddir" "$cachelink" # atomic
 }
 
-# Triggers a cleanup of stale cache records at most once every 60 seconds.
+# Triggers a cleanup of stale cache records. By default cleanup runs at most
+# once every 60 seconds, but may be more frequent if shorter cache expiries are
+# configured.
 bc::_cleanup() {
   [[ -d "$_bc_cache_dir" ]] || return
-  bc::_newer_than "$_bc_cache_dir/cleanup" 60 && return
+  bc::_newer_than "$_bc_cache_dir/cleanup" "$_bc_cleanup_frequency" && return
   touch "$_bc_cache_dir/cleanup"
   cd / || return # necessary because find will cd back to the cwd, which can fail
-  find "$_bc_cache_dir" -not -path "$_bc_cache_dir" -not -newermt '-1 minute' -delete
+
+  if [[ -d "${_bc_cache_dir}/data" ]]; then
+    local dir
+    find "${_bc_cache_dir}/data" -maxdepth 1 -mindepth 1 |
+      while IFS= read -r dir; do
+        find "$dir" -not -path "$dir" -not -newermt "-$(basename "$dir") seconds" -delete
+      done
+  fi
+
   find "$_bc_cache_dir" -xtype l -delete
-  cd - > /dev/null || return
 }
 
-# Given a function - and optionally a list of environment variables - Decorates
-# the function with a short-term caching mechanism, useful for improving the
-# responsiveness of functions used in the prompt, at the expense of slightly
-# stale data.
+# "Decorates" a given function, wrapping it in a caching mechanism to speed up
+# repeated invocation (at the expense of potentially-stale data). This behavior
+# wass designed to improve the responsiveness of functions used in an
+# interactive shell prompt, but can be used anywhere caching would be helpful.
 #
-# Suggested usage:
+# Usage:
+#   bc::cache FUNCTION TTL REFRESH [ENV_VARS ...]
+#
+# FUNCTION     Name of the function to cache
+# TTL          The _minimum_ amount of time to cache this function's output. The
+#              cache is invalidated asynchronously, so data may sometimes
+#              persist longer than this duration.
+# REFRESH      The time after which cached data is considered stale; the data
+#              will be refreshed asynchronously if the function is called after
+#              this much time has passed.
+# ENV_VARS ... Names of any environment variables to additionally key the cache
+#              on, such as PWD
+#
+# Durations can be specified in seconds, minutes, hours, and days, e.g. 10m30s
+#
+# Example usage:
+#
 #   expensive_func() {
 #     ...
-#   } && bc::cache expensive_func PWD
+#   } && bc::cache expensive_func 1m 10s PWD
 #
 # This will replace expensive_func with a new function that caches the result
-# of calling expensive_func frequently with the same arguments and in the same
-# working directory. The original expensive_func is still available as
+# of calling expensive_func with the same arguments and in the same
+# working directory. Data is cached for at least one minute, and will be
+# refreshed asynchronously if the function is invoked more than 10 seconds after
+# the prior invocation. The original expensive_func is still available as
 # bc::orig::expensive_func.
-#
-# It'd be nice to do something like write out,err,exit to a single file (e.g.
-# base64 encoded, newline separated), but uuencode isn't always installed.
 bc::cache() {
   local func="${1:?"Must provide a function name to cache"}"; shift
   bc::copy_function "${func}" "bc::orig::${func}" || return
-  local env="${func}:" v
-  for v in "$@"; do
-    env+="${env}:\$${v}"
-  done
+  local ttl=60 # legacy support for a default TTL duration, may go away
+  if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
+    ttl=$(bc::_to_seconds "$1") || return; shift
+  fi
+  local refresh=10 # legacy support for a default refresh duration, may go away
+  if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
+    refresh=$(bc::_to_seconds "$1") || return; shift
+  fi
+
+  if (( refresh > ttl )); then
+    printf 'refresh(%ss) cannot exceeed TTL(%ss).' "$refresh" "$ttl" >&2
+    return 1
+  fi
+
+  # run cleanups more frequently if shorter expirations are set
+  if (( _bc_cleanup_frequency > ttl )); then
+    if (( ttl >= 10 )); then
+      _bc_cleanup_frequency="$ttl"
+    else
+      _bc_cleanup_frequency="10"
+    fi
+  fi
+
+  # TODO sanity-check that all remaining args look like variables (e.g. no whitespace)
+  # shellcheck disable=SC2155
+  local env="${func}:$(IFS=:; echo "${*/#/\$}")"
 
   # This is a function-template pattern suggested in #5, in order to reduce
   # the amount of code stored in strings for use by eval. The template bodies
@@ -185,8 +233,9 @@ bc::cache() {
 
   bc::_warm_template() {
     ( {
-        local cachepath
-        cachepath="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
+        local cachedir cachelink
+        cachedir="${_bc_cache_dir}/data/%ttl%"
+        cachelink="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
         bc::_write_cache "%func%" "$@"
        } & )
   }
@@ -195,23 +244,24 @@ bc::cache() {
     $_bc_enabled || { bc::orig::%func% "$@"; return; }
     ( bc::_cleanup & ) # Clean up stale caches in the background
 
-    local cachepath
-    cachepath="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
+    local cachedir cachelink refresh="%refresh%"
+    cachedir="${_bc_cache_dir}/data/%ttl%"
+    cachelink="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
 
     # Read from cache - capture output once to avoid races
     # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
     local out err exit
-    bc::_read_input out 2>/dev/null < "${cachepath}/out" || true
-    bc::_read_input err 2>/dev/null < "${cachepath}/err" || true
-    bc::_read_input exit 2>/dev/null < "${cachepath}/exit" || true
+    bc::_read_input out 2>/dev/null < "${cachelink}/out" || true
+    bc::_read_input err 2>/dev/null < "${cachelink}/err" || true
+    bc::_read_input exit 2>/dev/null < "${cachelink}/exit" || true
 
-    if [[ "$exit" == "" ]]; then
+    if [[ -z "$exit" ]]; then
       # No cache, execute in foreground
       bc::_write_cache "%func%" "$@"
-      bc::_read_input out < "${cachepath}/out"
-      bc::_read_input err < "${cachepath}/err"
-      bc::_read_input exit < "${cachepath}/exit"
-    elif ! bc::_newer_than "${cachepath}/exit" 10; then
+      bc::_read_input out < "${cachelink}/out"
+      bc::_read_input err < "${cachelink}/err"
+      bc::_read_input exit < "${cachelink}/exit"
+    elif (( refresh > 0 )) && ! bc::_newer_than "${cachelink}/exit" "$refresh"; then
       # Cache exists but is old, refresh in background
       ( bc::_write_cache "%func%" "$@" & )
     fi
@@ -229,7 +279,7 @@ bc::cache() {
   unset -f bc::_warm_template bc::_cache_template
   eval "$(printf 'bc::warm::%q()\n%s ; %q()\n%s' \
       "$func" "$warm_function_body" "$func" "$cache_function_body" \
-    | sed -e "s/%env%/${env}/g" -e "s/%func%/${func}/g")"
+    | sed -e "s/%env%/${env}/g" -e "s/%func%/${func}/g" -e "s/%ttl%/${ttl}/g" -e "s/%refresh%/${refresh}/g")"
 }
 
 # Further decorates bc::cache with a mutual-exclusion lock. This ensures that
@@ -312,7 +362,7 @@ bc::benchmark() {
     bc::copy_function "bc::orig::${func}" "${func}" &> /dev/null || true
     # Cache (or re-cache) the function
     # Doesn't include any env vars in the key, which is probably fine for most benchmarks
-    bc::cache "${func}"
+    bc::cache "$func" 1m 10s
 
     local raw cold warm
     raw="$(bc::_time "bc::orig::${func}" "$@")"

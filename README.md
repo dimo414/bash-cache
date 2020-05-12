@@ -14,21 +14,35 @@ Simply `source bash-cache.sh` into your script or shell.
 
 ## Usage
 
-To cache a function pass its name to `bc::cache`. This function
-[decorates](https://en.wikipedia.org/wiki/Decorator_pattern) an existing Bash function, wrapping
-it with a caching layer that temporarily retains the output and exit status of the backing
-function.
+```
+bc::cache FUNCTION TTL REFRESH [ENV_VARS ...]
+```
 
-By default the cache is keyed off the function arguments (meaning `foo`, `foo bar`, and `foo baz`
-are each cached separately).
+To cache a function pass its name to `bc::cache`, along with the amount of time the cached results
+should persist. This function [decorates](https://en.wikipedia.org/wiki/Decorator_pattern) an
+existing Bash function, wrapping it with a caching layer that temporarily retains the output and
+exit status of the backing function.
 
-Data is generally cached for no more than 60 seconds, and the cache is refreshed in the background
-if more than 10 seconds old. In the future these values may be configurable.
+By default the cache is keyed off the function arguments (meaning `some_func`, `some_func bar`, and
+`some_func baz` are each cached separately).
 
 Cached data **is shared across processes** by default; see below for ways to change this.
 
 Some example usages can be seen in the
 [prompt.gem project](https://github.com/dimo414/prompt.gem/blob/master/env_functions.sh).
+
+### Cache durations
+
+Each cached result is associated with two durations; the *TTL* deadline and the *refresh* deadline.
+Durations can be specified in (s)econds, (m)inutes, (h)ours, and (d)ays, for example `30s`, `1d`,
+or `1h24m5s`. 
+
+* Once a cached result exceeds its TTL it is eligible for cleanup, and will shortly be removed.
+  Note that until it is cleaned up the cached data may still be returned from the cache.
+  `1m` is a recommended TTL duration for functions that will be surfaced in a prompt.
+* If a cached result exceeds its refresh deadline it will be asynchronously updated when the
+  function is invoked. The cached data will continue to be used until the refresh completes.
+  `10s` is a recommended refresh duration for functions that will be surfaced in a prompt.
 
 ### Customizing the cache key
 
@@ -40,7 +54,7 @@ any relevant environment variable names to `bc::cache` after the function name.
 * `$` is less common, but can be used to isolate a function's cache to the current process. Note
   you'll need to single-quote this argument (`'$'`).
 
-### Suggested Usage
+### Example usage
 
 You can invoke `bc::cache` at any time, however you're encouraged to do so immediately following
 the function definition as a form of self-documentation, similar to
@@ -49,7 +63,7 @@ the function definition as a form of self-documentation, similar to
 ```shell
 my_expensive_function() {
   ...
-} && bc::cache my_expensive_function PWD
+} && bc::cache my_expensive_function 1m 10s PWD
 ```
 
 Notice in this example `PWD` is specified, meaning the cache will key off the current working
@@ -85,6 +99,9 @@ default cached data is stored in a temp directory that the OS will clean up from
 (generally on reboot), but if you override the cache directory via `BC_CACHE_DIR` you may want to
 clean up the directory yourself.
 
+**Note:** cached data is cleaned up asynchronously, therefore data may persist longer than the
+specified TTL duration.
+
 ### Locking
 
 By design the caching provided by bash-cache is racy - concurrent invocations may or may not end up
@@ -96,7 +113,8 @@ instead of `bc::cache`. This behaves identically to `bc::cache` but uses an advi
 prevent concurrent invocations of the backing function.
 
 Note that needing mutual-exclusion is a **strong** signal that you should be using a more powerful
-language than Bash, and that the locking bash-cache provides is best-effort only.
+language than Bash, and that the locking bash-cache provides is
+[advisory](https://en.wikipedia.org/wiki/File_locking#In_Unix-like_systems) and best-effort only.
 
 ## Other Functions
 
