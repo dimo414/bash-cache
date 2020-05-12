@@ -54,6 +54,32 @@ else
   bc::_now() { date +'%s'; } # Fallback
 fi
 
+# Converts a duration, like 10s, 5h, or 7m30s, to a number of seconds
+# Supports (s)econds, (m)inutes, (h)ours, and (d)ays.
+# This parser is fairly lenient, but the only _supported_ format is:
+#   ([0-9]+d)? *([0-9]+h)? *([0-9]+m)? *([0-9]+s)?
+bc::_to_seconds() {
+  local input=$* duration=0
+  until [[ -z "$input" ]]; do
+    if [[ "$input" =~ [[:space:]]*([0-9]+[smhd])$ ]]; then
+      input=${input%${BASH_REMATCH[0]}}
+      local element=${BASH_REMATCH[1]} magnitude
+      case "${element: -1}" in # ;& fallthrough added in 4.0, can't use yet
+        s) magnitude=1 ;;
+        m) magnitude=60 ;;
+        h) magnitude=3600 ;;
+        d) magnitude=86400 ;;
+        *) return 126 ;; # should be unreachable
+      esac
+      (( duration += magnitude * ${element%?} )) # trim unit with %?
+    else
+      printf "Invalid duration: '%s' (token: %s)\n" "$1" "${input##* }" >&2
+      return 1
+    fi
+  done
+  echo "$duration"
+}
+
 # Succeeds if the given FILE is less than SECONDS old (according to its modtime)
 bc::_newer_than() {
   local modtime curtime seconds

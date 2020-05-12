@@ -33,6 +33,33 @@ skip_osx() {
   (( $(bc::_now) > 0 )) # not worth testing further...
 }
 
+@test "_to_seconds" {
+  # Note: unsupported patterns that happen to parse today, like '10s 5m' or
+  # '10s10s', are intentionally not tested; if the parser becomes stricter in
+  # the future the tests should still pass.
+  check_duration() { # TODO https://github.com/bats-core/bats-core/issues/241
+    run bc::_to_seconds "$1"
+    (( status == 0 ))
+    (( output == $2 ))
+  }
+  check_duration 10s 10
+  check_duration 10m $((10*60))
+  check_duration 10h $((10*60*60))
+  check_duration 10d $((10*24*60*60))
+  check_duration 10d10s $((10*24*60*60 + 10))
+  check_duration 1m10s $((1*60 + 10))
+  check_duration '1m 10s' $((1*60 + 10))
+  check_duration 1d2h3m4s $((1*24*60*60 + 2*60*60 + 3*60 + 4))
+  check_duration '1d  2h  3m  4s' $((1*24*60*60 + 2*60*60 + 3*60 + 4))
+}
+
+@test "_to_seconds invalid" {
+  invalid_durations=('' '  ' 's' '10' '10m5' '10S' '10w' '10seconds' '10 s')
+  for invalid in "${invalid_durations[@]}"; do
+    ! bc::_to_seconds "$invalid"
+  done
+}
+
 @test "_newer_than" {
   skip_osx "This test relies on GNU touch" # need some other approach for this to pass on OSX
   touch -d '1 minute ago' "$BATS_TMPDIR/_newer_than_test"
