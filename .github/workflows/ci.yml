@@ -25,7 +25,6 @@ jobs:
       with:
         entrypoint: sh
         args: -c "find . -name '*.sh' -exec shellcheck {} +"
-    - uses: actions/upload-artifact@v1
+    - uses: actions/upload-artifact@v2
       with:
-        name: generated.sh
         path: generated.sh
