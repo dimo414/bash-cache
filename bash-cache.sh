@@ -127,15 +127,22 @@ bc::copy_function() {
 bc::on()  { _bc_enabled=true;  }
 bc::off() { _bc_enabled=false; }
 
+# Sets the path to read the cached data from; this will be used as a symlink
+# pointing to where the data is written.
+# Assumes ${env[@]}, ${func}, and ${args[@]} are set appropriately
+bc::_set_cache_read_loc() {
+  # NOT local; must be local in calling function
+  cache_read_loc="${_bc_cache_dir}/$(bc::_hash "${env[@]}" -- "$func" "${args[@]}")"
+}
+
 # Captures function output and writes to disc
+# Assumes ${cache_read_loc}, ${ttl}, ${env[@]}, ${func}, and ${args[@]} are set appropriately
 bc::_write_cache() {
-  func=${1:?Must provide a function to cache}; shift
-  : "${cachelink:?}" "${cachedir:?}" # must be set by the calling function
-  bc::_ensure_dir_exists "$cachedir"
-  local cmddir
-  cmddir=$(mktemp -d "${cachedir}/XXXXXXXXXX") || return
-  "bc::orig::$func" "$@" > "$cmddir/out" 2> "$cmddir/err"; printf '%s' $? > "$cmddir/exit"
-  ln -sfn "$cmddir" "$cachelink" # atomic
+  local cache_write_dir="${_bc_cache_dir}/data/${ttl}" cache
+  bc::_ensure_dir_exists "$cache_write_dir"
+  cache=$(mktemp -d "${cache_write_dir}/XXXXXXXXXX") || return
+  "bc::orig::${func}" "${args[@]}" > "${cache}/out" 2> "${cache}/err"; printf '%s' $? > "${cache}/exit"
+  ln -sfn "$cache" "$cache_read_loc" # atomic
 }
 
 # Triggers a cleanup of stale cache records. By default cleanup runs at most
@@ -192,7 +199,6 @@ bc::_cleanup() {
 # bc::orig::expensive_func.
 bc::cache() {
   local func="${1:?"Must provide a function name to cache"}"; shift
-  bc::copy_function "${func}" "bc::orig::${func}" || return
   local ttl=60 # legacy support for a default TTL duration, may go away
   if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
     ttl=$(bc::_to_seconds "$1") || return; shift
@@ -216,9 +222,18 @@ bc::cache() {
     fi
   fi
 
-  # TODO sanity-check that all remaining args look like variables (e.g. no whitespace)
-  # shellcheck disable=SC2155
-  local env="${func}:$(IFS=:; echo "${*/#/\$}")"
+  local v escaped env=()
+  for v in "$@"; do
+    # shellcheck disable=SC2016
+    printf -v escaped '"${%s}"' "$v"
+    if ! eval ": ${escaped}" 2>/dev/null; then
+      echo "${v} is not a valid variable" >&2
+      return 1
+    fi
+    env+=("$escaped")
+  done
+
+  bc::copy_function "${func}" "bc::orig::${func}" || return
 
   # This is a function-template pattern suggested in #5, in order to reduce
   # the amount of code stored in strings for use by eval. The template bodies
@@ -233,10 +248,9 @@ bc::cache() {
 
   bc::_warm_template() {
     ( {
-        local cachedir cachelink
-        cachedir="${_bc_cache_dir}/data/%ttl%"
-        cachelink="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
-        bc::_write_cache "%func%" "$@"
+        local func="%func%" ttl="%ttl%" env=(%env%) args=("$@") cache_read_loc
+        bc::_set_cache_read_loc
+        bc::_write_cache
        } & )
   }
 
@@ -244,26 +258,25 @@ bc::cache() {
     $_bc_enabled || { bc::orig::%func% "$@"; return; }
     ( bc::_cleanup & ) # Clean up stale caches in the background
 
-    local cachedir cachelink refresh="%refresh%"
-    cachedir="${_bc_cache_dir}/data/%ttl%"
-    cachelink="${_bc_cache_dir}/$(bc::_hash "${*}::%env%")"
+    local func="%func%" ttl="%ttl%" refresh="%refresh%" env=(%env%) args=("$@") cache_read_loc
+    bc::_set_cache_read_loc
 
     # Read from cache - capture output once to avoid races
     # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
     local out err exit
-    bc::_read_input out 2>/dev/null < "${cachelink}/out" || true
-    bc::_read_input err 2>/dev/null < "${cachelink}/err" || true
-    bc::_read_input exit 2>/dev/null < "${cachelink}/exit" || true
+    bc::_read_input out 2>/dev/null < "${cache_read_loc}/out" || true
+    bc::_read_input err 2>/dev/null < "${cache_read_loc}/err" || true
+    bc::_read_input exit 2>/dev/null < "${cache_read_loc}/exit" || true
 
     if [[ -z "$exit" ]]; then
       # No cache, execute in foreground
-      bc::_write_cache "%func%" "$@"
-      bc::_read_input out < "${cachelink}/out"
-      bc::_read_input err < "${cachelink}/err"
-      bc::_read_input exit < "${cachelink}/exit"
-    elif (( refresh > 0 )) && ! bc::_newer_than "${cachelink}/exit" "$refresh"; then
+      bc::_write_cache
+      bc::_read_input out < "${cache_read_loc}/out"
+      bc::_read_input err < "${cache_read_loc}/err"
+      bc::_read_input exit < "${cache_read_loc}/exit"
+    elif (( refresh > 0 )) && ! bc::_newer_than "${cache_read_loc}/exit" "$refresh"; then
       # Cache exists but is old, refresh in background
-      ( bc::_write_cache "%func%" "$@" & )
+      ( bc::_write_cache & )
     fi
 
     # Output cached result
@@ -279,7 +292,7 @@ bc::cache() {
   unset -f bc::_warm_template bc::_cache_template
   eval "$(printf 'bc::warm::%q()\n%s ; %q()\n%s' \
       "$func" "$warm_function_body" "$func" "$cache_function_body" \
-    | sed -e "s/%env%/${env}/g" -e "s/%func%/${func}/g" -e "s/%ttl%/${ttl}/g" -e "s/%refresh%/${refresh}/g")"
+    | sed -e "s/%func%/${func}/g" -e "s/%ttl%/${ttl}/g" -e "s/%refresh%/${refresh}/g" -e "s/%env%/${env[*]}/g")"
 }
 
 # Further decorates bc::cache with a mutual-exclusion lock. This ensures that

@@ -130,6 +130,11 @@ stale_cache() {
   (( $(call_count) == 2 ))
 }
 
+@test "bc::cache catches invalid env" {
+  ! bc::cache expensive_func 60s 10s 'env"_var'
+  ! bc::cache expensive_func 60s 10s '(echo foo)' # command substitution
+}
+
 @test "caching on and off" {
   bc::cache expensive_func 60s 10s
   expensive_func
