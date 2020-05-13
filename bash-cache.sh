@@ -5,7 +5,7 @@
 
 # Configuration
 _bc_enabled=true
-_bc_version=(0 7 1)
+_bc_version=(0 7 2)
 
 if [[ -n "$BC_HASH_COMMAND" ]]; then
   _bc_hash_command="$BC_HASH_COMMAND"
@@ -338,6 +338,7 @@ bc::locked_cache() {
 
   func="${1:?"Should be impossible since bc::cache already completed"}"
   bc::copy_function "${func}" "bc::unlocked::${func}" || return
+  unset -f "bc::warm::${func}" || return # locked_cache doesn't support warming
 
   bc::_ensure_dir_exists "$_bc_locks_dir"
   touch "${_bc_locks_dir}/${func}.lock"

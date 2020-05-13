@@ -17,15 +17,19 @@ source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/../bash-cache.sh" || e
 
 declare -F | cut -d' ' -f3 | sort > "$DIR/orig_func.txt"
 
-# Since bc::locked_cache delegates to bc::cache this should give us coverage of
-# All dynamically generated functions
-expensive() { :; } && bc::locked_cache expensive
+example() { :; } && bc::cache example PWD LANG
+racy() { :; } && bc::locked_cache racy
 
 printf "Capturing generated functions:"
-printf '%s\n' '#!/bin/bash' '#' '# GENERATED SCRIPT FOR USE WITH SHELLCHECK' '' > "generated.sh"
+printf '%s\n' \
+  '#!/bin/bash' \
+  '#' \
+  '# GENERATED SCRIPT FOR USE WITH SHELLCHECK' \
+  '# shellcheck disable=SC2034 # premit unused variables' \
+  '' > "generated.sh"
 
 # declare config variables
-printf '# shellcheck disable=SC2034\ndeclare' >> "generated.sh"
+printf 'declare' >> "generated.sh"
 printf ' %s' '_bc_cache_dir' '_bc_locks_dir' '_bc_enabled' >> "generated.sh"
 
 for func in $(comm -13 "$DIR/orig_func.txt" <(declare -F | cut -d' ' -f3 | sort)); do
