@@ -5,16 +5,28 @@
 
 # Configuration
 _bc_enabled=true
-_bc_version=(0 7 0)
+_bc_version=(0 7 1)
+
+if [[ -n "$BC_HASH_COMMAND" ]]; then
+  _bc_hash_command="$BC_HASH_COMMAND"
+elif command -v sha1sum &> /dev/null; then
+  _bc_hash_command='sha1sum'
+elif command -v shasum &> /dev/null; then # OSX
+  _bc_hash_command='shasum'
+else
+  _bc_hash_command='cksum'
+fi
+
 if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
   _bc_cache_dir="$_BC_TESTONLY_CACHE_DIR"
 else
   printf -v _bc_cache_dir '%s/bash-cache-%s.%s-%s' \
     "${BC_CACHE_DIR:-${TMPDIR:-/tmp}}" "${_bc_version[@]::2}" "$(id -u)"
 fi
+
 _bc_locks_dir="${_bc_cache_dir}.locks"
 _bc_cleanup_frequency=60
-: ${#_bc_version} # satisfy SC2034
+
 
 # Ensures the dir exists. If it does not exist creates it and restricts its permissions.
 bc::_ensure_dir_exists() {
@@ -26,15 +38,14 @@ bc::_ensure_dir_exists() {
 }
 
 # Hash function used to key cached results.
-# Implementation is selected dynamically to support different environments (notably OSX provides
-# shasum instead of GNU's sha1sum).
-if command -v sha1sum &> /dev/null; then
-  bc::_hash() { sha1sum <<<"$*" | tr -cd '0-9a-fA-F'; }
-elif command -v shasum &> /dev/null; then
-  bc::_hash() { shasum <<<"$*" | tr -cd '0-9a-fA-F'; }
-else
-  bc::_hash() { cksum <<<"$*"; }
-fi
+# We need to avoid munging similar invocations into identical strings to hash
+# (e.g. `foo a b` vs. `foo 'a b'` could naively be decomosed to the same
+# string). Fortunately, we can safely use NUL as a field delimiter since NUL
+# bytes can't appear in Bash strings, meaning it _should_ not be possible for
+# different invocations to munge to the same hash input.
+bc::_hash() {
+  printf '%s\0' "$@" | "$_bc_hash_command" | tr -cd '0-9a-fA-F'
+}
 
 # Gets the time of last file modification in seconds since the epoch. Prints 0 and fails if file
 # does not exist.

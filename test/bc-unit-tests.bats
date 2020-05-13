@@ -10,9 +10,14 @@ skip_osx() {
   fi
 }
 
-@test "_hash" {
+@test "_hash special chars" {
   hashed=$(bc::_hash "several dangerous/special'chars&#!")
   [[ "$hashed" =~ ^[0-9a-fA-F]+$ ]]
+}
+
+@test "_hash similar args" {
+  [[ "$(bc::_hash a b)" != "$(bc::_hash 'a b')" ]]
+  [[ "$(bc::_hash a b)" != "$(bc::_hash 'ab')" ]]
 }
 
 @test "_modtime" {

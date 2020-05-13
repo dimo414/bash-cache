@@ -119,6 +119,14 @@ stale_cache() {
   (( $(call_count) == 2 ))
 }
 
+@test "cached respects similar args" {
+  bc::cache expensive_func 60s 10s
+  expensive_func
+  expensive_func a b
+  expensive_func 'a b'
+  (( $(call_count) == 3 ))
+}
+
 @test "cached respects env" {
   env_var=foo
   bc::cache expensive_func 60s 10s env_var
