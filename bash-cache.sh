@@ -5,7 +5,7 @@
 
 # Configuration
 _bc_enabled=true
-_bc_version=(0 7 2)
+_bc_version=(0 7 3)
 
 if [[ -n "$BC_HASH_COMMAND" ]]; then
   _bc_hash_command="$BC_HASH_COMMAND"
@@ -13,8 +13,6 @@ elif command -v sha1sum &> /dev/null; then
   _bc_hash_command='sha1sum'
 elif command -v shasum &> /dev/null; then # OSX
   _bc_hash_command='shasum'
-else
-  _bc_hash_command='cksum'
 fi
 
 if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
@@ -44,7 +42,7 @@ bc::_ensure_dir_exists() {
 # bytes can't appear in Bash strings, meaning it _should_ not be possible for
 # different invocations to munge to the same hash input.
 bc::_hash() {
-  printf '%s\0' "$@" | "$_bc_hash_command" | tr -cd '0-9a-fA-F'
+  printf '%s\0' "$@" | "${_bc_hash_command:-cksum}" | tr -cd '0-9a-fA-F'
 }
 
 # Gets the time of last file modification in seconds since the epoch. Prints 0 and fails if file
@@ -59,12 +57,20 @@ else
   bc::_modtime() { stat -f %m "$@" 2>/dev/null || { echo 0; return 1; }; } # BSD/OSX stat
 fi
 
+# Deletes all symlinks pointing to a nonexistant location
+if find /dev/null -xtypex l &> /dev/null; then
+  bc::_clear_symlinks() { find "$@" -xtype l -delete; } # GNU find
+else
+  # https://unix.stackexchange.com/a/38691/19157
+  bc::_clear_symlinks() { find "$@" -type l ! -exec test -e {} \; -delete; } # BSD/OSX find
+fi
+
 # Gets the current system time in seconds since the epoch.
 # Modern Bash can use the printf builtin, older Bash must call out to date.
-if printf "%(%s)T" -1 &> /dev/null; then
-  bc::_now() { printf "%(%s)T" -1; } # Modern Bash
+if printf '%(%s)T' -1 &> /dev/null; then
+  bc::_now() { printf '%(%s)T' -1; } # Bash 4.2+
 else
-  bc::_now() { date +'%s'; } # Fallback
+  bc::_now() { date '+%s'; } # Fallback
 fi
 
 # Converts a duration, like 10s, 5h, or 7m30s, to a number of seconds
@@ -152,7 +158,8 @@ bc::_write_cache() {
   local cache_write_dir="${_bc_cache_dir}/data/${ttl}" cache
   bc::_ensure_dir_exists "$cache_write_dir"
   cache=$(mktemp -d "${cache_write_dir}/XXXXXXXXXX") || return
-  "bc::orig::${func}" "${args[@]}" > "${cache}/out" 2> "${cache}/err"; printf '%s' $? > "${cache}/exit"
+  "bc::orig::${func}" "${args[@]}" > "${cache}/out" 2> "${cache}/err"
+  printf '%s' $? > "${cache}/exit"
   ln -sfn "$cache" "$cache_read_loc" # atomic
 }
 
@@ -173,7 +180,7 @@ bc::_cleanup() {
       done
   fi
 
-  find "$_bc_cache_dir" -xtype l -delete
+  bc::_clear_symlinks "$_bc_cache_dir"
 }
 
 # "Decorates" a given function, wrapping it in a caching mechanism to speed up
@@ -303,7 +310,11 @@ bc::cache() {
   unset -f bc::_warm_template bc::_cache_template
   eval "$(printf 'bc::warm::%q()\n%s ; %q()\n%s' \
       "$func" "$warm_function_body" "$func" "$cache_function_body" \
-    | sed -e "s/%func%/${func}/g" -e "s/%ttl%/${ttl}/g" -e "s/%refresh%/${refresh}/g" -e "s/%env%/${env[*]}/g")"
+    | sed \
+      -e "s/%func%/${func}/g" \
+      -e "s/%ttl%/${ttl}/g" \
+      -e "s/%refresh%/${refresh}/g" \
+      -e "s/%env%/${env[*]}/g")"
 }
 
 # Further decorates bc::cache with a mutual-exclusion lock. This ensures that
