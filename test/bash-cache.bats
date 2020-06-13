@@ -6,7 +6,8 @@
 # ideally we could configure the stale cache threshold for the test so this is less brittle.
 
 # Ensure each test has its own cache
-_BC_TESTONLY_CACHE_DIR=$(mktemp -d "$BATS_TMPDIR/bash-cache-XXXXXXXXXX")
+TEST_DIR=$(mktemp -d "${BATS_TMPDIR}/bash-cache-XXXXXXXXXX")
+_BC_TESTONLY_CACHE_DIR="${TEST_DIR}/cache"
 source "${BATS_TEST_DIRNAME}/../bash-cache.sh"
 
 # Similar to Bats' run function, but invokes the given command in the same
@@ -19,10 +20,10 @@ run_sameshell() {
   set +e
   set +E
   set +T
-  "$@" > "$BATS_TMPDIR/bats$$.output" 2> "$BATS_TMPDIR/bats$$.error"
+  "$@" > "$TEST_DIR/bats$$.output" 2> "$TEST_DIR/bats$$.error"
   status="$?"
-  stdout=$(cat "$BATS_TMPDIR/bats$$.output")
-  stderr=$(cat "$BATS_TMPDIR/bats$$.error")
+  stdout=$(cat "$TEST_DIR/bats$$.output")
+  stderr=$(cat "$TEST_DIR/bats$$.error")
   oldIFS=$IFS
   IFS=$'\n' lines=($output)
   [ -z "$e" ] || set -e
@@ -248,10 +249,10 @@ stale_cache() {
   noop_func() { :; }
 
   bc::cache noop_func 60s 10s
-  noop_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  noop_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
 
-  diff <(:) "$BATS_TMPDIR/out"
-  diff <(:) "$BATS_TMPDIR/err"
+  diff <(:) "$TEST_DIR/out"
+  diff <(:) "$TEST_DIR/err"
 }
 
 @test "args preserved" {
@@ -263,10 +264,10 @@ stale_cache() {
   bc::cache args_func 60s 10s
 
   check_same_output() {
-    bc::orig::args_func "$@" > "$BATS_TMPDIR/exp_out" 2> "$BATS_TMPDIR/exp_err"
-    args_func "$@" > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
-    diff -u "$BATS_TMPDIR/exp_out" "$BATS_TMPDIR/out"
-    diff "$BATS_TMPDIR/exp_err" "$BATS_TMPDIR/err"
+    bc::orig::args_func "$@" > "$TEST_DIR/exp_out" 2> "$TEST_DIR/exp_err"
+    args_func "$@" > "$TEST_DIR/out" 2> "$TEST_DIR/err"
+    diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
+    diff "$TEST_DIR/exp_err" "$TEST_DIR/err"
   }
 
   check_same_output
@@ -274,18 +275,33 @@ stale_cache() {
   check_same_output "1 2" 3
 }
 
-@test "newline-sensitive" {
+@test "sensitive output: terminal newlines" {
   sensitive_func() {
-    printf foo
-    echo bar >&2
+    printf 'foo'
+    printf 'bar\n' >&2
   }
-  sensitive_func > "$BATS_TMPDIR/exp_out" 2> "$BATS_TMPDIR/exp_err"
+  sensitive_func > "$TEST_DIR/exp_out" 2> "$TEST_DIR/exp_err"
 
   bc::cache sensitive_func 60s 10s
-  sensitive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  sensitive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
 
-  diff "$BATS_TMPDIR/exp_out" "$BATS_TMPDIR/out"
-  diff "$BATS_TMPDIR/exp_err" "$BATS_TMPDIR/err"
+  diff "$TEST_DIR/exp_out" "$TEST_DIR/out"
+  diff "$TEST_DIR/exp_err" "$TEST_DIR/err"
+}
+
+@test "sensitive output: NULs" {
+  sensitive_func() {
+    printf 'foo\0bar'
+    printf 'bar\0baz\n' >&2
+  }
+  sensitive_func > "$TEST_DIR/exp_out" 2> "$TEST_DIR/exp_err"
+
+  bc::cache sensitive_func 60s 10s
+  sensitive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
+
+  # Currently caching doesn't support NUL; maybe one day
+  ! diff "$TEST_DIR/exp_out" "$TEST_DIR/out"
+  ! diff "$TEST_DIR/exp_err" "$TEST_DIR/err"
 }
 
 @test "exit status" {
@@ -304,11 +320,11 @@ stale_cache() {
 
 @test "warm cache" {
   bc::cache expensive_func 60s 10s
-  bc::warm::expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  bc::warm::expensive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
   wait_for_call_count 1
 
-  diff /dev/null "$BATS_TMPDIR/out"
-  diff /dev/null "$BATS_TMPDIR/err"
+  diff /dev/null "$TEST_DIR/out"
+  diff /dev/null "$TEST_DIR/err"
 
   expensive_func
   (( $(call_count) == 1 )) # already cached
@@ -318,17 +334,17 @@ stale_cache() {
   bc::_time() { "$@" &> /dev/null; echo 1234; }
   check_output() {
     diff <(printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' 1234 1234 1234) \
-      "$BATS_TMPDIR/out"
-    diff /dev/null "$BATS_TMPDIR/err"
+      "$TEST_DIR/out"
+    diff /dev/null "$TEST_DIR/err"
   }
 
-  bc::benchmark expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  bc::benchmark expensive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
   ! declare -F bc::orig::expensive_func
   (( $(call_count) == 2 ))
   check_output
 
   bc::cache expensive_func 60s 10s
-  bc::benchmark expensive_func > "$BATS_TMPDIR/out" 2> "$BATS_TMPDIR/err"
+  bc::benchmark expensive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
   (( $(call_count) == 4 ))
   check_output
 }

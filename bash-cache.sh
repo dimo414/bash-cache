@@ -111,6 +111,8 @@ bc::_newer_than() {
 # Reads stdin into a variable, accounting for trailing newlines. Avoids needing a subshell or
 # command substitution.
 # See http://stackoverflow.com/a/22607352/113632 and https://stackoverflow.com/a/49552002/113632
+# TODO this isn't sufficient for NUL (\0) characters; how about opening a file
+# descriptor to each file and piping it directly to stdout/err instead?
 bc::_read_input() {
   # Use unusual variable names to avoid colliding with a variable name
   # the user might pass in (notably "contents")
