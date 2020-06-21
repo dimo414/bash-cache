@@ -394,7 +394,6 @@ bc::benchmark() {
   # Drop into a subshell so the benchmark doesn't affect the calling shell
   (
     _bc_cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/bc-benchmark-XXXXXX") || return
-    TIMEFORMAT='%R'
 
     # Undo the caching if $func has already been cached - no-op otherwise
     bc::copy_function "bc::orig::${func}" "${func}" &> /dev/null || true
