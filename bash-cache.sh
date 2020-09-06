@@ -166,11 +166,20 @@ bc::_write_cache() {
 }
 
 # Triggers a cleanup of stale cache records. By default cleanup runs at most
-# once every 60 seconds, but may be more frequent if shorter cache expiries are
-# configured.
+# once every 60 seconds. If shorter cache expirations are configured cleanups
+# will run more frequently.
 bc::_cleanup() {
   [[ -d "$_bc_cache_dir" ]] || return
   bc::_newer_than "$_bc_cache_dir/cleanup" "$_bc_cleanup_frequency" && return
+
+  # Basic mutex to prevent concurrent cleanups - BashFAQ/045
+  if mkdir "${_bc_cache_dir}/do_cleanup" 2>/dev/null; then
+    bc::_do_cleanup 2>/dev/null
+    rm -r "${_bc_cache_dir}/do_cleanup"
+  fi
+}
+
+bc::_do_cleanup() {
   touch "$_bc_cache_dir/cleanup"
   cd / || return # necessary because find will cd back to the cwd, which can fail
 
@@ -306,9 +315,9 @@ bc::cache() {
   }
 
   # shellcheck disable=SC2155
-  local warm_function_body=$(declare -f "bc::_warm_template"  | tail -n +2)
+  local warm_function_body=$(declare -f "bc::_warm_template" | tail -n +2)
   # shellcheck disable=SC2155
-  local cache_function_body=$(declare -f "bc::_cache_template"  | tail -n +2)
+  local cache_function_body=$(declare -f "bc::_cache_template" | tail -n +2)
   unset -f bc::_warm_template bc::_cache_template
   eval "$(printf 'bc::warm::%q()\n%s ; %q()\n%s' \
       "$func" "$warm_function_body" "$func" "$cache_function_body" \
@@ -368,7 +377,7 @@ bc::locked_cache() {
   }
 
   # shellcheck disable=SC2155
-  local locked_function_body=$(declare -f "bc::_locked_template"  | tail -n +2)
+  local locked_function_body=$(declare -f "bc::_locked_template" | tail -n +2)
   unset -f bc::_locked_template
   eval "$(printf '%q()\n%s' "$func" "$locked_function_body" \
     | sed -e "s/%func%/${func}/g" -e 's/&& %redir%/{fd}>/g')"

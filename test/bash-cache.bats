@@ -58,7 +58,7 @@ CALL_COUNT_FILE=$(mktemp)
 
 expensive_func() {
   # Output the expected new count before actually writing, since there could be a race
-  # This way the echo'ed count will never be *higher* than expected (it could be lower)
+  # This way the echo'ed count shouldn't be *higher* than expected (it could be lower)
   echo "$(($(call_count) + 1))"
   echo >> "$CALL_COUNT_FILE" # atomically write one more line to the file
 }
@@ -74,10 +74,11 @@ call_count() {
 
 wait_for_call_count() {
   # somehow need to synchronize on the cache being refreshed - just wait for it to update
-  for i in {1..2}; do
-    echo $(call_count) $i
+  local i
+  for i in {1..20}; do
+    echo "Wait loop ${i}; need:${1}, is:$(call_count)"
     if (( $(call_count) == $1 )); then break; fi
-    sleep 1
+    sleep .1
   done
   (( $(call_count) == $1 )) # cache was ultimately refreshed
 }
@@ -173,6 +174,7 @@ stale_cache() {
 }
 
 @test "differing cache expirations" {
+  # TODO it would be nice to improve this test to not need bc::_do_cleanup
   cheap_count=0
   something_cheap() { echo "$(( ++cheap_count ))"; }
   bc::cache expensive_func 2m 1m
@@ -180,6 +182,7 @@ stale_cache() {
   expensive_func
   something_cheap
   stale_cache 31s
+  bc::_do_cleanup # force cleanup
 
   expensive_func
   (( $(call_count) == 1 )) # cached result
@@ -187,6 +190,7 @@ stale_cache() {
   (( cheap_count == 2 )) # not cached
 
   stale_cache 121s # now cache is invalidated
+  bc::_do_cleanup # force cleanup
   expensive_func
   (( $(call_count) == 2 ))
   something_cheap
