@@ -206,6 +206,7 @@ stale_cache() {
 
 @test "concurrent locked calls respect mutex" {
     (( BASH_VERSINFO[0] >= 4 )) || skip "locked_cache depends on Bash 4.1 features"
+    command -v flock &>/dev/null || skip "locked_cache depends on flock"
     bc::locked_cache slow_expensive_func
 
     slow_expensive_func &
