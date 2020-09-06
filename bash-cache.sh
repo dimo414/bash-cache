@@ -5,7 +5,7 @@
 
 # Configuration
 _bc_enabled=true
-_bc_version=(0 7 3)
+_bc_version=(0 8 0)
 
 if [[ -n "$BC_HASH_COMMAND" ]]; then
   _bc_hash_command="$BC_HASH_COMMAND"
@@ -19,7 +19,7 @@ if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
   _bc_cache_dir="$_BC_TESTONLY_CACHE_DIR"
 else
   printf -v _bc_cache_dir '%s/bash-cache-%s.%s-%s' \
-    "${BC_CACHE_DIR:-${TMPDIR:-/tmp}}" "${_bc_version[@]::2}" "$(id -u)"
+    "${BC_CACHE_DIR:-${TMPDIR:-/tmp}}" "${_bc_version[@]::2}" "$EUID"
 fi
 
 _bc_locks_dir="${_bc_cache_dir}.locks"
