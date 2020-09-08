@@ -24,12 +24,9 @@ run_sameshell() {
   status="$?"
   stdout=$(cat "$TEST_DIR/bats$$.output")
   stderr=$(cat "$TEST_DIR/bats$$.error")
-  oldIFS=$IFS
-  IFS=$'\n' lines=($output)
   [ -z "$e" ] || set -e
   [ -z "$E" ] || set -E
   [ -z "$T" ] || set -T
-  IFS=$oldIFS
 }
 
 # Paired with run_sameshell, checks that the command behaved as expected.
@@ -253,11 +250,21 @@ stale_cache() {
 @test "no debug output" {
   noop_func() { :; }
 
-  bc::cache noop_func 60s 10s
-  noop_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
+  (
+    bc::cache noop_func 60s 10s
+    noop_func
+  ) > "$TEST_DIR/out" 2> "$TEST_DIR/err"
 
-  diff <(:) "$TEST_DIR/out"
-  diff <(:) "$TEST_DIR/err"
+  diff -u /dev/null "$TEST_DIR/out"
+  diff -u /dev/null "$TEST_DIR/err"
+
+  (
+    bc::memoize noop_func
+    noop_func
+  ) > "$TEST_DIR/out" 2> "$TEST_DIR/err"
+
+  diff -u /dev/null "$TEST_DIR/out"
+  diff -u /dev/null "$TEST_DIR/err"
 }
 
 @test "args preserved" {
@@ -272,7 +279,7 @@ stale_cache() {
     bc::orig::args_func "$@" > "$TEST_DIR/exp_out" 2> "$TEST_DIR/exp_err"
     args_func "$@" > "$TEST_DIR/out" 2> "$TEST_DIR/err"
     diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
-    diff "$TEST_DIR/exp_err" "$TEST_DIR/err"
+    diff -u "$TEST_DIR/exp_err" "$TEST_DIR/err"
   }
 
   check_same_output
@@ -290,8 +297,8 @@ stale_cache() {
   bc::cache sensitive_func 60s 10s
   sensitive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
 
-  diff "$TEST_DIR/exp_out" "$TEST_DIR/out"
-  diff "$TEST_DIR/exp_err" "$TEST_DIR/err"
+  diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
+  diff -u "$TEST_DIR/exp_err" "$TEST_DIR/err"
 }
 
 @test "sensitive output: NULs" {
@@ -305,8 +312,8 @@ stale_cache() {
   sensitive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
 
   # Currently caching doesn't support NUL; maybe one day
-  ! diff "$TEST_DIR/exp_out" "$TEST_DIR/out"
-  ! diff "$TEST_DIR/exp_err" "$TEST_DIR/err"
+  ! diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
+  ! diff -u "$TEST_DIR/exp_err" "$TEST_DIR/err"
 }
 
 @test "exit status" {
@@ -328,8 +335,8 @@ stale_cache() {
   bc::warm::expensive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
   wait_for_call_count 1
 
-  diff /dev/null "$TEST_DIR/out"
-  diff /dev/null "$TEST_DIR/err"
+  diff -u /dev/null "$TEST_DIR/out"
+  diff -u /dev/null "$TEST_DIR/err"
 
   expensive_func
   (( $(call_count) == 1 )) # already cached
@@ -338,9 +345,9 @@ stale_cache() {
 @test "benchmark" {
   bc::_time() { "$@" &> /dev/null; echo 1234; }
   check_output() {
-    diff <(printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' 1234 1234 1234) \
+    diff -u <(printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' 1234 1234 1234) \
       "$TEST_DIR/out"
-    diff /dev/null "$TEST_DIR/err"
+    diff -u /dev/null "$TEST_DIR/err"
   }
 
   bc::benchmark expensive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
@@ -375,4 +382,58 @@ stale_cache() {
   bc::benchmark multi_expensive_func 3
   call_count
   (( $(call_count) == 10 ))
+}
+
+@test "memoize" {
+  bc::memoize expensive_func ENV_VAR
+
+  expensive_func
+  (( $(call_count) == 1 ))
+  expensive_func
+  (( $(call_count) == 1 ))
+
+  expensive_func a
+  (( $(call_count) == 2 ))
+
+  expensive_func a b c
+  (( $(call_count) == 3 ))
+
+  expensive_func a b c
+  (( $(call_count) == 3 ))
+
+  ENV_VAR=something
+
+  expensive_func a b c
+  (( $(call_count) == 4 ))
+}
+
+@test "memoized: stderr isn't cached" {
+  err_func() { echo stdout; echo stderr >&2; } && bc::memoize err_func
+
+  run_sameshell err_func
+  expected 0 stdout stderr
+
+  run_sameshell err_func
+  expected 0 stdout ''
+
+  run_sameshell err_func abc
+  expected 0 stdout stderr
+}
+
+@test "memoized: failures aren't cached" {
+  bad_func() { echo stderr >&2; return "${code:-127}"; } && bc::memoize bad_func
+
+  run_sameshell bad_func
+  expected 127 "" "stderr"
+
+  code=10
+  run_sameshell bad_func
+  expected 10 "" "stderr" # not memoized
+
+  code=0
+  run_sameshell bad_func
+  expected 0 "" "stderr"
+
+  run_sameshell bad_func
+  expected 0 "" "" # memoized
 }

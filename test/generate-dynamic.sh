@@ -19,13 +19,17 @@ declare -F | cut -d' ' -f3 | sort > "$DIR/orig_func.txt"
 
 example() { :; } && bc::cache example PWD LANG
 racy() { :; } && bc::locked_cache racy
+memo() { :; } && bc::memoize memo PWD LANG
+memo a b c # trigger memoization
+memo_untouched() { :; } && bc::memoize memo_untouched PWD LANG
 
 printf "Capturing generated functions:"
 printf '%s\n' \
   '#!/bin/bash' \
   '#' \
   '# GENERATED SCRIPT FOR USE WITH SHELLCHECK' \
-  '# shellcheck disable=SC2034 # premit unused variables' \
+  '# shellcheck disable=SC2016 # permit single-quoted strings with variables' \
+  '# shellcheck disable=SC2034 # permit unused variables' \
   '' > "generated.sh"
 
 # declare config variables

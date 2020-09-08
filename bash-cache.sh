@@ -284,7 +284,7 @@ bc::cache() {
   }
 
   bc::_cache_template() {
-    $_bc_enabled || { bc::orig::%func% "$@"; return; }
+    "$_bc_enabled" || { bc::orig::%func% "$@"; return; }
     ( bc::_cleanup & ) # Clean up stale caches in the background
 
     local func="%func%" ttl="%ttl%" refresh="%refresh%" env=(%env%) args=("$@") cache_read_loc
@@ -383,6 +383,84 @@ bc::locked_cache() {
     | sed -e "s/%func%/${func}/g" -e 's/&& %redir%/{fd}>/g')"
 }
 
+# A lightweight alternative to bc::cache that attempts to persist repeated calls without disk I/O
+# and with weaker guarentees than bc::cache. Unlike bc::cache, memoized functions:
+# * Only persist stdout (stderr is untouched, and therefore only printed when the backing function
+#   is actually run)
+# * Only memoize calls that succeed (0 return code)
+# * Only persist a subset of recent invocations (currently just the most recent one)
+# * Are only persisted within the current shell
+# * Are persisted indefinitely, there is no TTL
+#
+# It is most useful for idempotent functions that:
+# * Are typically called repeatedly with the same arguments/state
+# * Don't write to stderr or return non-zero exit codes
+# * Don't require TTLs or time-based cache expiry
+#
+# Although the exact memoization semantics are subject to change (e.g. to improve the hit rate), a
+# memoized function will avoid re-invoking the backing function _at least_ when invoked a second
+# time with the same arguments and state. Therefore this is most useful for idempotent functions
+# that are typically called repeatedly with the same inputs (e.g. a no-arg PWD-sensitive function
+# that is called many times from the same directory). Assume that calls with different arguments or
+# environment variables invalidates all cached data.
+#
+# Usage:
+#   bc::memoize FUNCTION [ENV_VARS ...]
+#
+# FUNCTION     Name of the function to memoize
+# ENV_VARS ... Names of any environment variables to additionally key on,
+#              such as PWD
+bc::memoize() {
+  local func="${1:?"Must provide a function name to memoize"}"; shift
+
+  local v escaped env=()
+  for v in "$@"; do
+    # shellcheck disable=SC2016
+    printf -v escaped '"${%s}"' "$v"
+    if ! eval ": ${escaped}" 2>/dev/null; then
+      echo "${v} is not a valid variable" >&2
+      return 1
+    fi
+    env+=("$v")
+  done
+
+  bc::copy_function "${func}" "bc::orig::${func}" || return
+
+  bc::_memoize_template() {
+    local output v vars=() check checks=() func
+    # Preserve the exit code along with bc::_read_input, similar to proposal in #9. See also
+    # https://stackoverflow.com/a/43901140/113632 and Bash 4.2's lastpipe which might work better.
+    bc::_read_input output < <(bc::orig::%func% "$@"; printf "%3d" "$?")
+    (( ${output: -3} == 0 )) || return "$(( ${output: -3} ))"
+    output="${output%???}"
+    printf '%s' "$output"
+
+    for (( v=1; v<=$#; v++ )); do vars+=("$v"); done
+    vars+=(%env%)
+    for v in "${vars[@]}"; do
+      # shellcheck disable=SC2016
+      printf -v check '&& [[ "${%q}" == %q ]]' "$v" "${!v}"
+      checks+=("$check")
+    done
+
+    # shellcheck disable=SC2016
+    printf -v func '%q() {
+    "$_bc_enabled" || { bc::orig::%q "$@"; return; }
+    if (( $# == %q )) %s; then echo %q; else bc::memoize::%q "$@"; fi; }' \
+     '%func%' '%func%' "$#" "${checks[*]}" "$output" '%func%'
+    eval "$func"
+  }
+
+  # shellcheck disable=SC2155
+  local memoize_function_body=$(declare -f "bc::_memoize_template" | tail -n +2)
+  unset -f bc::_memoize_template
+  eval "$(printf '%q() { bc::memoize::%q "$@"; }\nbc::memoize::%q()\n%s' \
+    "$func" "$func" "$func" "$memoize_function_body" \
+    | sed \
+      -e "s/%func%/${func}/g" \
+      -e "s/%env%/${env[*]}/g")"
+}
+
 # Prints the real-time to execute the given command, discarding its output.
 bc::_time() {
   (
@@ -418,5 +496,30 @@ bc::benchmark() {
     printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' "$raw" "$cold" "$warm"
 
     rm -rf "$_bc_cache_dir" # not the "real" cache dir
+  )
+}
+
+bc::benchmark_memoize() {
+  local func=${1:?Must specify a function to benchmark}
+  shift
+  if ! declare -F "$func" &> /dev/null; then
+    echo "No such function ${func}" >&2
+    return 1
+  fi
+  # Drop into a subshell so the benchmark doesn't affect the calling shell
+  (
+    # Undo the memoizing if $func has already been cached - no-op otherwise
+    bc::copy_function "bc::orig::${func}" "${func}" &> /dev/null || true
+    # Memoize the function (with special env var)
+    bc::memoize "$func" BENCH
+
+    local raw cold warm invalidated
+    raw="$(bc::_time "bc::orig::${func}" "$@")"
+    cold="$(bc::_time "$func" "$@")"
+    warm="$("$func" "$@" &>/dev/null; bc::_time "$func" "$@")"
+    invalidated="$("$func" "$@" &>/dev/null; BENCH=1 bc::_time "$func" "$@")"
+
+    printf 'Original:\t%s\nCold Start:\t%s\nMemoized:\t%s\nInvalidated:\t%s\n' \
+      "$raw" "$cold" "$warm" "$invalidated"
   )
 }

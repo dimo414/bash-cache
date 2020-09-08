@@ -116,6 +116,36 @@ Note that needing mutual-exclusion is a **strong** signal that you should be usi
 language than Bash, and that the locking bash-cache provides is
 [advisory](https://en.wikipedia.org/wiki/File_locking#In_Unix-like_systems) and best-effort only.
 
+## Lighter-weight caching with `bc::memoize`
+
+```
+bc::memoize FUNCTION [ENV_VARS ...]
+```
+
+In addition to `bc::cache`, which fully caches the behavior of a function, `bc::memoize` is provided
+as a lighter-weight mechanism with more limited guarantees. Unlike `bc::cache`, which persists all
+recent invocations to disk, `bc::memoize` persists a small number (currently exactly one) of past
+invocations in-memory. It only stores stdout, and does not persist invocations that fail.
+
+This means `bc::memoize` cannot be used in as many situations as `bc::cache`, but for functions that
+only write to stdout and are expected to be invoked frequently with the same arguments it can be a
+more effective approach, as the caching overhead is much smaller.
+
+Although the exact caching behavior is subject to change (e.g. to improve the hit rate), a memoized
+function will avoid re-invoking the backing function _at least_ when invoked a second time with the
+same arguments and state. Therefore this is most useful for idempotent functions that are typically
+called repeatedly with the same inputs.
+
+### Example usage
+
+`bc::memoize` is similarly intended to be used as a decorator:
+
+```shell
+my_idempotent_function() {
+  ...
+} && bc::memoize my_idempotent_function PWD
+```
+
 ## Other Functions
 
 ### `bc::benchmark`
@@ -125,6 +155,8 @@ see the overhead introduced by Bash Cache and decide if it's beneficial for your
 
 This function runs in a subshell against a clean cache directory, and works for any function - you
 do not need to have previously called `bc::cache`.
+
+`bc::benchmark_memoize` provides the same basic benchmarking for `bc::memoize`.
 
 ### `bc::copy_function`
 
