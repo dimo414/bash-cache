@@ -269,9 +269,7 @@ stale_cache() {
 
 @test "args preserved" {
   args_func() {
-    # TODO this fails because of the extra space. Need to figure out why.
-    #echo "args[$#]: $*"
-    echo "args[$#]:$*"
+    echo "args[$#]: $*"
   }
   bc::cache args_func 60s 10s
 
