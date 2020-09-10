@@ -446,7 +446,7 @@ bc::memoize() {
     # shellcheck disable=SC2016
     printf -v func '%q() {
     "$_bc_enabled" || { bc::orig::%q "$@"; return; }
-    if (( $# == %q )) %s; then echo %q; else bc::memoize::%q "$@"; fi; }' \
+    if (( $# == %q )) %s; then printf "%%s" %q; else bc::memoize::%q "$@"; fi; }' \
      '%func%' '%func%' "$#" "${checks[*]}" "$output" '%func%'
     eval "$func"
   }

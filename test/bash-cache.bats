@@ -405,6 +405,24 @@ stale_cache() {
   (( $(call_count) == 4 ))
 }
 
+@test "memoize: sensitive output" {
+  sensitive_func() {
+    printf '%s' "$TEXT"
+  }
+
+  for TEXT in '' 'word' $'foo\nbar\n' $'\n\n' '; echo WHOOPS; return 1'; do
+    (
+    sensitive_func > "$TEST_DIR/exp_out"
+    bc::memoize sensitive_func
+    sensitive_func > "$TEST_DIR/out_cold"
+    sensitive_func > "$TEST_DIR/out_cached"
+
+    diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out_cold"
+    diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out_cached"
+    )
+  done
+}
+
 @test "memoized: stderr isn't cached" {
   err_func() { echo stdout; echo stderr >&2; } && bc::memoize err_func
 
