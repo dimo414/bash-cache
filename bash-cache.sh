@@ -65,18 +65,19 @@ else
   bc::_clear_symlinks() { find "$@" -type l ! -exec test -e {} \; -delete; } # BSD/OSX find
 fi
 
-# Gets the current system time in seconds since the epoch.
+# Writes the current system time in seconds since the epoch to $_now.
 # Modern Bash can use the printf builtin, older Bash must call out to date.
 if printf '%(%s)T' -1 &> /dev/null; then
-  bc::_now() { printf '%(%s)T' -1; } # Bash 4.2+
+  bc::_now() { printf -v _now '%(%s)T' -1; } # Bash 4.2+
 else
-  bc::_now() { date '+%s'; } # Fallback
+  bc::_now() { _now=$(date '+%s'); } # Fallback
 fi
 
 # Converts a duration, like 10s, 5h, or 7m30s, to a number of seconds
 # Supports (s)econds, (m)inutes, (h)ours, and (d)ays.
 # This parser is fairly lenient, but the only _supported_ format is:
 #   ([0-9]+d)? *([0-9]+h)? *([0-9]+m)? *([0-9]+s)?
+# Writes the result $_seconds so callers don't need a subshell
 bc::_to_seconds() {
   local input=$* duration=0
   until [[ -z "$input" ]]; do
@@ -96,16 +97,16 @@ bc::_to_seconds() {
       return 1
     fi
   done
-  echo "$duration"
+  printf -v _seconds '%s' "$duration"
 }
 
 # Succeeds if the given FILE is less than SECONDS old (according to its modtime)
 bc::_newer_than() {
-  local modtime curtime seconds
+  local modtime _now seconds
   modtime=$(bc::_modtime "${1:?Must provide a FILE}") || return
-  curtime=$(bc::_now) || return
+  bc::_now || return
   seconds=${2:?Must provide a number of SECONDS}
-  (( modtime > curtime - seconds ))
+  (( modtime > _now - seconds ))
 }
 
 # Reads stdin into a variable, accounting for trailing newlines. Avoids needing a subshell or
@@ -187,7 +188,7 @@ bc::_do_cleanup() {
     local dir
     find "${_bc_cache_dir}/data" -maxdepth 1 -mindepth 1 |
       while IFS= read -r dir; do
-        find "$dir" -not -path "$dir" -not -newermt "-$(basename "$dir") seconds" -delete
+        find "$dir" -not -path "$dir" -not -newermt "-${dir##*/} seconds" -delete
       done
   fi
 
@@ -227,14 +228,16 @@ bc::_do_cleanup() {
 # the prior invocation. The original expensive_func is still available as
 # bc::orig::expensive_func.
 bc::cache() {
-  local func="${1:?"Must provide a function name to cache"}"; shift
+  local _seconds func="${1:?"Must provide a function name to cache"}"; shift
   local ttl=60 # legacy support for a default TTL duration, may go away
   if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
-    ttl=$(bc::_to_seconds "$1") || return; shift
+    bc::_to_seconds "$1" || return; shift
+    ttl=$_seconds
   fi
   local refresh=10 # legacy support for a default refresh duration, may go away
   if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
-    refresh=$(bc::_to_seconds "$1") || return; shift
+    bc::_to_seconds "$1" || return; shift
+    refresh=$_seconds
   fi
 
   if (( refresh > ttl )); then
@@ -493,7 +496,8 @@ bc::benchmark() {
     cold="$(bc::_time "$func" "$@")"
     warm="$(bc::_time "$func" "$@")"
 
-    printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' "$raw" "$cold" "$warm"
+    printf 'Benchmarking %s with bc::cache\nOriginal:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' \
+    "$func" "$raw" "$cold" "$warm"
 
     rm -rf "$_bc_cache_dir" # not the "real" cache dir
   )
@@ -516,10 +520,12 @@ bc::benchmark_memoize() {
     local raw cold warm invalidated
     raw="$(bc::_time "bc::orig::${func}" "$@")"
     cold="$(bc::_time "$func" "$@")"
+    # Memoized functions don't share state across subshells, so we need to
+    # warm it first within the same command substitution
     warm="$("$func" "$@" &>/dev/null; bc::_time "$func" "$@")"
     invalidated="$("$func" "$@" &>/dev/null; BENCH=1 bc::_time "$func" "$@")"
 
-    printf 'Original:\t%s\nCold Start:\t%s\nMemoized:\t%s\nInvalidated:\t%s\n' \
-      "$raw" "$cold" "$warm" "$invalidated"
+    printf 'Benchmarking %s with bc::memoize\nOriginal:\t%s\nCold Start:\t%s\nMemoized:\t%s\nInvalidated:\t%s\n' \
+      "$func" "$raw" "$cold" "$warm" "$invalidated"
   )
 }

@@ -82,12 +82,12 @@ wait_for_call_count() {
 
 # mark whole cache stale
 stale_cache() {
-  local seconds
-  seconds=$(bc::_to_seconds "$1") || return
+  local _seconds
+  bc::_to_seconds "$1" || return
   if touch -A 00 . &> /dev/null; then
-    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A "-${seconds}" {} + # OSX
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -A "-${_seconds}" {} + # OSX
   else
-    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "${seconds} seconds ago" {} + # linux
+    find "$_BC_TESTONLY_CACHE_DIR" -exec touch -d "${_seconds} seconds ago" {} + # linux
   fi
   bc::_cleanup
 }
@@ -343,7 +343,7 @@ stale_cache() {
 @test "benchmark" {
   bc::_time() { "$@" &> /dev/null; echo 1234; }
   check_output() {
-    diff -u <(printf 'Original:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' 1234 1234 1234) \
+    diff -u <(printf 'Benchmarking expensive_func with bc::cache\nOriginal:\t%s\nCold Cache:\t%s\nWarm Cache:\t%s\n' 1234 1234 1234) \
       "$TEST_DIR/out"
     diff -u /dev/null "$TEST_DIR/err"
   }

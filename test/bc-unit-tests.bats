@@ -35,7 +35,8 @@ skip_osx() {
 }
 
 @test "_now" {
-  (( $(bc::_now) > 0 )) # not worth testing further...
+  bc::_now
+  (( _now > 0 )) # not worth testing further...
 }
 
 @test "_to_seconds" {
@@ -45,7 +46,9 @@ skip_osx() {
   check_duration() { # TODO https://github.com/bats-core/bats-core/issues/241
     run bc::_to_seconds "$1"
     (( status == 0 ))
-    (( output == $2 ))
+    [[ -z "$output" ]]
+    bc::_to_seconds "$1" # re-run in the same shell
+    (( _seconds == $2 ))
   }
   check_duration 10s 10
   check_duration 10m $((10*60))
