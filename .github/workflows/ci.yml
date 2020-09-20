@@ -14,6 +14,8 @@ jobs:
       - uses: actions/checkout@v1
       - name: "Using ${{ matrix.bash-version }}"
         run: ${{ matrix.bash-version }} -c 'bats test'
+      - name: "Benchmark"
+        run: ${{ matrix.bash-version }} -c 'example() { sleep 1; } && source bash-cache.sh && bc::benchmark example && bc::benchmark_memoize example'
     
   ShellCheck:
     runs-on: ubuntu-latest
