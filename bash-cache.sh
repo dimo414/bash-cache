@@ -5,7 +5,7 @@
 
 # Configuration
 _bc_enabled=true
-_bc_version=(0 8 0)
+_bc_version=(0 9 0)
 
 if [[ -n "$BC_HASH_COMMAND" ]]; then
   _bc_hash_command="$BC_HASH_COMMAND"
@@ -110,10 +110,9 @@ bc::_newer_than() {
 }
 
 # Reads stdin into a variable, accounting for trailing newlines. Avoids needing a subshell or
-# command substitution.
-# See http://stackoverflow.com/a/22607352/113632 and https://stackoverflow.com/a/49552002/113632
-# TODO this isn't sufficient for NUL (\0) characters; how about opening a file
-# descriptor to each file and piping it directly to stdout/err instead?
+# command substitution. Although better than a command substitution bc::cache avoids this function
+# because NUL bytes are still unsupported, as Bash variables don't allow NULs.
+# See https://stackoverflow.com/a/22607352/113632 and https://stackoverflow.com/a/49552002/113632
 bc::_read_input() {
   # Use unusual variable names to avoid colliding with a variable name
   # the user might pass in (notably "contents")
@@ -290,31 +289,34 @@ bc::cache() {
     "$_bc_enabled" || { bc::orig::%func% "$@"; return; }
     ( bc::_cleanup & ) # Clean up stale caches in the background
 
-    local func="%func%" ttl="%ttl%" refresh="%refresh%" env=(%env%) args=("$@") cache_read_loc
+    local func="%func%" ttl="%ttl%" refresh="%refresh%" env=(%env%) args=("$@") exit cache_read_loc
     bc::_set_cache_read_loc
 
-    # Read from cache - capture output once to avoid races
-    # Note redirecting stderr to /dev/null comes first to suppress errors due to missing stdin
-    local out err exit
-    bc::_read_input out 2>/dev/null < "${cache_read_loc}/out" || true
-    bc::_read_input err 2>/dev/null < "${cache_read_loc}/err" || true
-    bc::_read_input exit 2>/dev/null < "${cache_read_loc}/exit" || true
+    while true; do
+      # Attempt to open the /out and /err files as descriptors 3 and 4; if either fails to open the
+      # block does not execute. If they both open succesfully the descriptors can be safely read
+      # even if the files are concurrently cleaned up.
+      # Descriptor 2 (stderr) is bounced to descriptor 5 (in the inner block) and back (in the outer
+      # block) so that errors opening either file (in the middle block) can be discarded.
+      { { {
+        exit=$(< "${cache_read_loc}/exit")
+        # if exit is missing/empty we raced with a cleanup, disregard cache
+        if [[ -n "$exit" ]]; then
+          if (( refresh > 0 )) && ! bc::_newer_than "${cache_read_loc}/exit" "$refresh"; then
+            # Cache exists but is old, refresh in background
+            ( bc::_write_cache & )
+          fi
+          command cat <&3 >&1 # stdout
+          command cat <&4 >&2 # stderr
+          return "$exit"
+        fi
+      # Unlike using exec, this syntax preserves any existing file descriptors that might be open.
+      # https://mywiki.wooledge.org/FileDescriptor#Juggling_FDs describes this in more detail.
+      } 2>&5; } 2>/dev/null 3<"${cache_read_loc}/out" 4<"${cache_read_loc}/err"; } 5>&2
 
-    if [[ -z "$exit" ]]; then
-      # No cache, execute in foreground
+      # No cache, refresh in foreground and try again
       bc::_write_cache
-      bc::_read_input out < "${cache_read_loc}/out"
-      bc::_read_input err < "${cache_read_loc}/err"
-      bc::_read_input exit < "${cache_read_loc}/exit"
-    elif (( refresh > 0 )) && ! bc::_newer_than "${cache_read_loc}/exit" "$refresh"; then
-      # Cache exists but is old, refresh in background
-      ( bc::_write_cache & )
-    fi
-
-    # Output cached result
-    printf '%s' "$out"
-    printf '%s' "$err" >&2
-    return "${exit:-255}"
+    done
   }
 
   # shellcheck disable=SC2155

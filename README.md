@@ -31,6 +31,18 @@ Cached data **is shared across processes** by default; see below for ways to cha
 Some example usages can be seen in the
 [prompt.gem project](https://github.com/dimo414/prompt.gem/blob/master/env_functions.sh).
 
+### Fidelity
+
+There are many existing command-caching utilities and patterns in the wild, however the cached
+behavior is typically incomplete (often only caching stdout). bash-cache strives to provide
+high-fidelity caching, such that cached results are as close to indiscernable as possible.
+
+* stdout and stderr are both cached, and output separately to stdout and stderr respectively
+* output is lossless; many implementations can't handle trailing whitespace or `nul` bytes
+* exit status code is preserved
+* positional arguments are respected; naive implementations may conflate `foo bar baz` (two args)
+  and `foo 'bar baz'` (one arg with whitespace)
+
 ### Cache durations
 
 Each cached result is associated with two durations; the *TTL* deadline and the *refresh* deadline.

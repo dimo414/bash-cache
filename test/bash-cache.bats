@@ -285,6 +285,25 @@ stale_cache() {
   check_same_output "1 2" 3
 }
 
+@test "file descriptors respected" {
+  fd_test() {
+    cat <&3
+    cat <&4
+    cat <&5
+    echo err >&2
+  }
+
+  # '<<<... x<&0' writes ... to x instead of stdin
+  # See https://mywiki.wooledge.org/FileDescriptor#Juggling_FDs
+  fd_test <<<333 3<&0 <<<444 4<&0 <<<555 5<&0 > "$TEST_DIR/exp_out" 2> "$TEST_DIR/exp_err"
+
+  bc::cache fd_test 60s 10s
+  fd_test <<<333 3<&0 <<<444 4<&0 <<<555 5<&0 > "$TEST_DIR/out" 2> "$TEST_DIR/err"
+
+  diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
+  diff -u "$TEST_DIR/exp_err" "$TEST_DIR/err"
+}
+
 @test "sensitive output: terminal newlines" {
   sensitive_func() {
     printf 'foo'
@@ -309,9 +328,8 @@ stale_cache() {
   bc::cache sensitive_func 60s 10s
   sensitive_func > "$TEST_DIR/out" 2> "$TEST_DIR/err"
 
-  # Currently caching doesn't support NUL; maybe one day
-  ! diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
-  ! diff -u "$TEST_DIR/exp_err" "$TEST_DIR/err"
+  diff -u "$TEST_DIR/exp_out" "$TEST_DIR/out"
+  diff -u "$TEST_DIR/exp_err" "$TEST_DIR/err"
 }
 
 @test "exit status" {
