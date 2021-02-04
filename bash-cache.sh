@@ -389,12 +389,12 @@ bc::locked_cache() {
 }
 
 # A lightweight alternative to bc::cache that attempts to persist repeated calls without disk I/O
-# and with weaker guarentees than bc::cache. Unlike bc::cache, memoized functions:
+# and with weaker guarantees than bc::cache. Unlike bc::cache, memoized functions:
 # * Only persist stdout (stderr is untouched, and therefore only printed when the backing function
 #   is actually run)
 # * Only memoize calls that succeed (0 return code)
 # * Only persist a subset of recent invocations (currently just the most recent one)
-# * Are only persisted within the current shell
+# * Are only persisted within the current shell (important! see below)
 # * Are persisted indefinitely, there is no TTL
 #
 # It is most useful for idempotent functions that:
@@ -408,6 +408,10 @@ bc::locked_cache() {
 # that are typically called repeatedly with the same inputs (e.g. a no-arg PWD-sensitive function
 # that is called many times from the same directory). Assume that calls with different arguments or
 # environment variables invalidates all cached data.
+#
+# Note that an in-memory cache is incompatible with subshells or command substitutions. If the
+# function is cached within a subshell the cached result will _not_ propagate back to the calling
+# shell.
 #
 # Usage:
 #   bc::memoize FUNCTION [ENV_VARS ...]
