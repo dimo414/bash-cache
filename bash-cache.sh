@@ -294,12 +294,12 @@ bc::cache() {
 
     while true; do
       # Attempt to open the /out and /err files as descriptors 3 and 4; if either fails to open the
-      # block does not execute. If they both open succesfully the descriptors can be safely read
+      # block does not execute. If they both open successfully the descriptors can be safely read
       # even if the files are concurrently cleaned up.
       # Descriptor 2 (stderr) is bounced to descriptor 5 (in the inner block) and back (in the outer
       # block) so that errors opening either file (in the middle block) can be discarded.
       { { {
-        exit=$(< "${cache_read_loc}/exit")
+        IFS='' read -r exit <"${cache_read_loc}/exit" || true
         # if exit is missing/empty we raced with a cleanup, disregard cache
         if [[ -n "$exit" ]]; then
           if (( refresh > 0 )) && ! bc::_newer_than "${cache_read_loc}/exit" "$refresh"; then
