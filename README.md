@@ -128,55 +128,6 @@ Note that needing mutual-exclusion is a **strong** signal that you should be usi
 language than Bash, and that the locking bash-cache provides is
 [advisory](https://en.wikipedia.org/wiki/File_locking#In_Unix-like_systems) and best-effort only.
 
-## Lighter-weight caching with `bc::memoize`
-
-**EXPERIMENTAL:** This functionality may not work the way you need, and is subject to change or
-removal. Prefer `bc::cache` if the behavior of `bc::memoize` isn't what you need. 
-
-```
-bc::memoize FUNCTION [ENV_VARS ...]
-```
-
-In addition to `bc::cache`, which fully caches the behavior of a function, `bc::memoize` is provided
-as a lighter-weight mechanism with more limited guarantees. Unlike `bc::cache`, which persists all
-recent invocations to disk, `bc::memoize` persists a small number (currently **exactly one**) of past
-invocations in-memory. It only stores stdout, and does not persist invocations that fail.
-
-This means `bc::memoize` cannot be used in as many situations as `bc::cache`, but for functions that
-only write to stdout and are expected to be invoked frequently within the same shell with the same
-arguments it can be a more effective approach, as the caching overhead is much smaller.
-
-Although the exact caching behavior is subject to change (e.g. to improve the hit rate), a memoized
-function will avoid re-invoking the backing function _at least_ when invoked a second time with the
-same arguments and state. Therefore this is most useful for idempotent functions that are typically
-called repeatedly with the same inputs.
-
-### Be careful with subshells
-
-One of the reasons `bc::cache` writes to disk is in order to share state across multiple shell
-invocations. In particular, data cached in a subshell or command substitution cannot be
-passed back up to the parent process without writing to disk (or another out-of-band channel).
-
-This means that `bc::memoize`-ed functions (like any in-memory cache) will not work with
-subshells. For example:
-
-```shell
-$ slow_func() { ... } && bc::memoize slow_func
-$ result=$(slow_func)  # output is cached in the subshell and then the cache is discarded
-$ slow_func            # cold cache, calls the backing function again
-$ result=$(slow_func)  # this can use the cache from the second call 
-```
-
-### Example usage
-
-`bc::memoize` is similarly intended to be used as a decorator:
-
-```shell
-my_idempotent_function() {
-  ...
-} && bc::memoize my_idempotent_function PWD
-```
-
 ## Other Functions
 
 ### `bc::benchmark`
