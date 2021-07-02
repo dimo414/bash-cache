@@ -285,6 +285,7 @@ bc::cache() {
        } & )
   }
 
+  # shellcheck disable=SC2288
   bc::_cache_template() {
     "$_bc_enabled" || { bc::orig::%func% "$@"; return; }
     ( bc::_cleanup & ) # Clean up stale caches in the background
@@ -370,6 +371,7 @@ bc::locked_cache() {
   bc::_ensure_dir_exists "$_bc_locks_dir"
   touch "${_bc_locks_dir}/${func}.lock"
 
+  # shellcheck disable=SC2288
   bc::_locked_template() {
     bc::_ensure_dir_exists "$_bc_locks_dir"
     local fd
@@ -435,6 +437,7 @@ bc::memoize() {
 
   bc::copy_function "${func}" "bc::orig::${func}" || return
 
+  # shellcheck disable=SC2288
   bc::_memoize_template() {
     local output v vars=() check checks=() func
     # Preserve the exit code along with bc::_read_input, similar to proposal in #9. See also
