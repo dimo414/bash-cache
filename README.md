@@ -8,6 +8,9 @@ Originally part of [ProfileGem](http://git.mwdiamond.com/profilegem) and
 [prompt.gem](http://git.mwdiamond.com/prompt.gem), this functionality has been pulled out
 into a standalone utility.
 
+This library has also inspired [`bkt`](http://git.mwdiamond.com/bkt), a standalone binary for
+caching subprocess invocations. If bash-cache doesn't fit your use case see if `bkt` does.
+
 ## Installation
 
 Simply `source bash-cache.sh` into your script or shell.
