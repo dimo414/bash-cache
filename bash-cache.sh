@@ -82,7 +82,7 @@ bc::_to_seconds() {
   local input=$* duration=0
   until [[ -z "$input" ]]; do
     if [[ "$input" =~ [[:space:]]*([0-9]+[smhd])$ ]]; then
-      input=${input%${BASH_REMATCH[0]}}
+      input=${input%"${BASH_REMATCH[0]}"}
       local element=${BASH_REMATCH[1]} magnitude
       case "${element: -1}" in # ;& fallthrough added in 4.0, can't use yet
         s) magnitude=1 ;;
