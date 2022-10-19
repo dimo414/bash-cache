@@ -9,7 +9,7 @@
 _bc_enabled=true
 _bc_version=(0 10 0)
 
-if [[ -n "$BC_HASH_COMMAND" ]]; then
+if [[ -n "${BC_HASH_COMMAND:-}" ]]; then
   _bc_hash_command="$BC_HASH_COMMAND"
 elif command -v sha1sum &> /dev/null; then
   _bc_hash_command='sha1sum'
@@ -17,7 +17,7 @@ elif command -v shasum &> /dev/null; then # OSX
   _bc_hash_command='shasum'
 fi
 
-if [[ -n "$_BC_TESTONLY_CACHE_DIR" ]]; then
+if [[ -n "${_BC_TESTONLY_CACHE_DIR:-}" ]]; then
   _bc_cache_dir="$_BC_TESTONLY_CACHE_DIR"
 else
   printf -v _bc_cache_dir '%s/bash-cache-%s.%s-%s' \
@@ -231,12 +231,12 @@ bc::_do_cleanup() {
 bc::cache() {
   local _seconds func="${1:?"Must provide a function name to cache"}"; shift
   local ttl=60 # legacy support for a default TTL duration, may go away
-  if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
+  if [[ "${1:-}" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
     bc::_to_seconds "$1" || return; shift
     ttl=$_seconds
   fi
   local refresh=10 # legacy support for a default refresh duration, may go away
-  if [[ "$1" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
+  if [[ "${1:-}" =~ [0-9]+[dhms]$ ]]; then # safe because variable names can't match this pattern
     bc::_to_seconds "$1" || return; shift
     refresh=$_seconds
   fi
@@ -258,7 +258,7 @@ bc::cache() {
   local v escaped env=()
   for v in "$@"; do
     # shellcheck disable=SC2016
-    printf -v escaped '"${%s}"' "$v"
+    printf -v escaped '"${%s:-}"' "$v"
     if ! eval ": ${escaped}" 2>/dev/null; then
       echo "${v} is not a valid variable" >&2
       return 1
@@ -439,7 +439,7 @@ bc::memoize() {
   local v escaped env=()
   for v in "$@"; do
     # shellcheck disable=SC2016
-    printf -v escaped '"${%s}"' "$v"
+    printf -v escaped '"${%s:-}"' "$v"
     if ! eval ": ${escaped}" 2>/dev/null; then
       echo "${v} is not a valid variable" >&2
       return 1
@@ -463,7 +463,7 @@ bc::memoize() {
     vars+=(%env%)
     for v in "${vars[@]}"; do
       # shellcheck disable=SC2016
-      printf -v check '&& [[ "${%q}" == %q ]]' "$v" "${!v}"
+      printf -v check '&& [[ "${%q:-}" == %q ]]' "$v" "${!v:-}"
       checks+=("$check")
     done
 
