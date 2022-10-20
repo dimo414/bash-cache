@@ -2,6 +2,9 @@
 #
 # Unit tests of individual bash-cache functions, not overall caching semantics.
 
+# Treat unset variables  as an error
+set -u
+
 source "${BATS_TEST_DIRNAME}/../bash-cache.sh"
 
 skip_osx() {
