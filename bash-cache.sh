@@ -1,7 +1,9 @@
 #!/bin/bash
-
+#
 # Bash Cache provides a transparent mechanism for caching long-running Bash
 # functions. See the README.md for full details.
+#
+# shellcheck disable=SC2317  # Disable this check for now, see shellcheck#2613 and shellcheck#2614
 
 # Configuration
 _bc_enabled=true
