@@ -9,7 +9,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bash-version: [bash-5, bash-4, bash-3]
+        # TODO bats 1.2.0 crashes with bash 4.2, upgrade and see if it can be enabled
+        bash-version: [bash-5.2, bash-5.1, bash-5.0, bash-4.4, bash-3]
     steps:
       - uses: actions/checkout@v1
       - name: "Using ${{ matrix.bash-version }}"

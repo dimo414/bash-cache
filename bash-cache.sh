@@ -315,7 +315,7 @@ bc::cache() {
         fi
       # Unlike using exec, this syntax preserves any existing file descriptors that might be open.
       # https://mywiki.wooledge.org/FileDescriptor#Juggling_FDs describes this in more detail.
-      } 2>&5; } 2>/dev/null 3<"${cache_read_loc}/out" 4<"${cache_read_loc}/err"; } 5>&2
+      } 2>&5; } 2>/dev/null 3<"${cache_read_loc}/out" 4<"${cache_read_loc}/err"; } 5>&2 || true
 
       # No cache, refresh in foreground and try again
       bc::_write_cache
