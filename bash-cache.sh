@@ -287,11 +287,12 @@ bc::cache() {
        } & )
   }
 
+  # shellcheck disable=SC2288
   bc::_force_template() {
     local func="%func%" ttl="%ttl%" env=(%env%) args=("$@") cache_read_loc
     bc::_set_cache_read_loc
     rm -f "$cache_read_loc" # invalidate the cache
-    "%func%"
+    "%func%" "$@"
   }
 
   # shellcheck disable=SC2288
