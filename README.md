@@ -98,13 +98,25 @@ solid-state drive performance will be significantly better than caching to a spi
 
 ### Calling the original function
 
-If needed, the original function can be invoked via `bc::orig::FUNCTION_NAME` (e.g.
-`bc::orig::my_expensive_function`).
+The original function is renamed to `bc::orig::[FUNCTION_NAME]` (e.g.
+`bc::orig::my_expensive_function`). This can be used to bypass caching if needed.
 
-### Warming the cache
+### Manually refreshing the cache
 
-If you anticipate a function will be called shortly you can warm the cache by calling
-`bc::warm::FUNCTION_NAME`. This invokes the function in the background and caches its output.
+Two other functions, `bc::warm::[FUNCTION_NAME]` and `bc::force::[FUNCTION_NAME]`, are provided to
+update the cache on demand. Both unconditionally execute and cache the backing function, but
+differ in how they are intended to be used.
+
+`bc::warm::[FUNCTION_NAME]` refreshes a cached invocation asynchronously and silently, returning
+control to the caller immediately. This can be used to ensure invocations are freshly cached
+before the output is needed. For example, prompt.gem can
+[warm cached functions displayed in the prompt](https://github.com/dimo414/prompt.gem/blob/7e6b5d2a7d773d5aa44880c5425a4b12c1dc066f/callback_functions.sh#L61)
+before the prompt is actually constructed, allowing the functions to be refreshed concurrently
+rather than one at a time.
+
+By contrast `bc::force::[FUNCTION_NAME]` forces a synchronous cache refresh, blocking until the
+backing function completes and outputing the cached contents exactly like calling
+`[FUNCTION_NAME]`.
 
 ### Cleanup
 
@@ -123,7 +135,7 @@ By design the caching provided by bash-cache is racy - concurrent invocations ma
 reusing the same cached value. For most cases (idempotent functions, to be precise) this should be
 sufficient.
 
-For cases where concurrent calls to the backing function are problematic, use `bc::locking_cache`
+For cases where concurrent calls to the backing function are problematic, use `bc::locked_cache`
 instead of `bc::cache`. This behaves identically to `bc::cache` but uses an advisory mutex lock to
 prevent concurrent invocations of the backing function.
 

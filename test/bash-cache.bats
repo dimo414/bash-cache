@@ -358,6 +358,16 @@ stale_cache() {
   (( $(call_count) == 1 )) # already cached
 }
 
+@test "force cache" {
+  bc::cache expensive_func 60s 10s
+  expensive_func
+  expensive_func
+  (( $(call_count) == 1 )) # cached
+
+  bc::force::expensive_func
+  (( $(call_count) == 2 )) # invalidated
+}
+
 @test "benchmark" {
   bc::_time() { "$@" &> /dev/null; echo 1234; }
   check_output() {

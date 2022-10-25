@@ -7,7 +7,7 @@
 
 # Configuration
 _bc_enabled=true
-_bc_version=(0 9 0)
+_bc_version=(0 10 0)
 
 if [[ -n "$BC_HASH_COMMAND" ]]; then
   _bc_hash_command="$BC_HASH_COMMAND"
@@ -39,7 +39,7 @@ bc::_ensure_dir_exists() {
 
 # Hash function used to key cached results.
 # We need to avoid munging similar invocations into identical strings to hash
-# (e.g. `foo a b` vs. `foo 'a b'` could naively be decomosed to the same
+# (e.g. `foo a b` vs. `foo 'a b'` could naively be decomposed to the same
 # string). Fortunately, we can safely use NUL as a field delimiter since NUL
 # bytes can't appear in Bash strings, meaning it _should_ not be possible for
 # different invocations to munge to the same hash input.
@@ -242,7 +242,7 @@ bc::cache() {
   fi
 
   if (( refresh > ttl )); then
-    printf 'refresh(%ss) cannot exceeed TTL(%ss).' "$refresh" "$ttl" >&2
+    printf 'refresh(%ss) cannot exceed TTL(%ss).' "$refresh" "$ttl" >&2
     return 1
   fi
 
@@ -287,6 +287,13 @@ bc::cache() {
        } & )
   }
 
+  bc::_force_template() {
+    local func="%func%" ttl="%ttl%" env=(%env%) args=("$@") cache_read_loc
+    bc::_set_cache_read_loc
+    rm -f "$cache_read_loc" # invalidate the cache
+    "%func%"
+  }
+
   # shellcheck disable=SC2288
   bc::_cache_template() {
     "$_bc_enabled" || { bc::orig::%func% "$@"; return; }
@@ -325,10 +332,12 @@ bc::cache() {
   # shellcheck disable=SC2155
   local warm_function_body=$(declare -f "bc::_warm_template" | tail -n +2)
   # shellcheck disable=SC2155
+  local force_function_body=$(declare -f "bc::_force_template" | tail -n +2)
+  # shellcheck disable=SC2155
   local cache_function_body=$(declare -f "bc::_cache_template" | tail -n +2)
-  unset -f bc::_warm_template bc::_cache_template
-  eval "$(printf 'bc::warm::%q()\n%s ; %q()\n%s' \
-      "$func" "$warm_function_body" "$func" "$cache_function_body" \
+  unset -f bc::_warm_template bc::_force_template bc::_cache_template
+  eval "$(printf 'bc::warm::%q()\n%s ; bc::force::%q()\n%s ; %q()\n%s' \
+      "$func" "$warm_function_body" "$func" "$force_function_body" "$func" "$cache_function_body" \
     | sed \
       -e "s/%func%/${func}/g" \
       -e "s/%ttl%/${ttl}/g" \
