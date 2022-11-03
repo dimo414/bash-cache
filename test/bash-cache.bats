@@ -5,8 +5,7 @@
 # Note most of these tests assumes the test takes less than 10 seconds (the background-refresh time)
 # ideally we could configure the stale cache threshold for the test so this is less brittle.
 
-# Treat unset variables  as an error
-set -u
+set -u  # Treat unset variables as an error
 
 # Ensure each test has its own cache
 TEST_DIR=$(mktemp -d "${BATS_TMPDIR}/bash-cache-XXXXXXXXXX")

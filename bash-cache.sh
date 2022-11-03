@@ -129,7 +129,7 @@ bc::_read_input() {
      _contents+=("$_line"$'\n')
    done
    # include $_line once more to capture any content after the last newline
-   printf -v "$1" '%s' "${_contents[@]+"${_contents[@]}"}" "$_line"
+   printf -v "$1" '%s' ${_contents[@]+"${_contents[@]}"} "$_line"
 }
 
 # Given a name and an existing function, create a new function called name that
@@ -153,7 +153,7 @@ bc::off() { _bc_enabled=false; }
 # Assumes ${env[@]}, ${func}, and ${args[@]} are set appropriately
 bc::_set_cache_read_loc() {
   # NOT local; must be local in calling function
-  cache_read_loc="${_bc_cache_dir}/$(bc::_hash "${env[@]+"${env[@]}"}" -- "$func" "${args[@]+"${args[@]}"}")"
+  cache_read_loc="${_bc_cache_dir}/$(bc::_hash ${env[@]+"${env[@]}"} -- "$func" ${args[@]+"${args[@]}"})"
 }
 
 # Captures function output and writes to disc
@@ -162,7 +162,7 @@ bc::_write_cache() {
   local cache_write_dir="${_bc_cache_dir}/data/${ttl}" cache
   bc::_ensure_dir_exists "$cache_write_dir"
   cache=$(mktemp -d "${cache_write_dir}/XXXXXXXXXX") || return
-  "bc::orig::${func}" "${args[@]+"${args[@]}"}" > "${cache}/out" 2> "${cache}/err"
+  "bc::orig::${func}" ${args[@]+"${args[@]}"} > "${cache}/out" 2> "${cache}/err"
   printf '%s' $? > "${cache}/exit"
   ln -sfn "$cache" "$cache_read_loc" # atomic
 }
@@ -343,7 +343,7 @@ bc::cache() {
       -e "s/%func%/${func}/g" \
       -e "s/%ttl%/${ttl}/g" \
       -e "s/%refresh%/${refresh}/g" \
-      -e "s/%env%/${env[*]+"${env[*]}"}/g")"
+      -e "s/%env%/${env[*]:-}/g")"
 }
 
 # Further decorates bc::cache with a mutual-exclusion lock. This ensures that
@@ -461,7 +461,7 @@ bc::memoize() {
 
     for (( v=1; v<=$#; v++ )); do vars+=("$v"); done
     vars+=(%env%)
-    for v in "${vars[@]+"${vars[@]}"}"; do
+    for v in ${vars[@]+"${vars[@]}"}; do
       # shellcheck disable=SC2016
       printf -v check '&& [[ "${%q:-}" == %q ]]' "$v" "${!v:-}"
       checks+=("$check")
@@ -471,7 +471,7 @@ bc::memoize() {
     printf -v func '%q() {
     "$_bc_enabled" || { bc::orig::%q "$@"; return; }
     if (( $# == %q )) %s; then printf "%%s" %q; else bc::memoize::%q "$@"; fi; }' \
-     '%func%' '%func%' "$#" "${checks[*]+"${checks[*]}"}" "$output" '%func%'
+     '%func%' '%func%' "$#" "${checks[*]:-}" "$output" '%func%'
     eval "$func"
   }
 
@@ -482,7 +482,7 @@ bc::memoize() {
     "$func" "$func" "$func" "$memoize_function_body" \
     | sed \
       -e "s/%func%/${func}/g" \
-      -e "s/%env%/${env[*]+"${env[*]}"}/g")"
+      -e "s/%env%/${env[*]:-}/g")"
 }
 
 # Prints the real-time to execute the given command, discarding its output.
