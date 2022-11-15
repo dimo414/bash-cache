@@ -5,15 +5,14 @@ on: [push, pull_request]
 jobs:
   Test:
     runs-on: ubuntu-latest
-    container: dimo414/ci-bash
+    container: ghcr.io/dimo414/bash-ci
     strategy:
       fail-fast: false
       matrix:
-        # TODO bats 1.2.0 crashes with bash 4.2, upgrade and see if it can be enabled
-        bash-version: [bash-5.2, bash-5.1, bash-5.0, bash-4.4, bash-3]
+        bash-version: [bash-5.2, bash-5.1, bash-5.0, bash-4.4, bash-4.3, bash-3.2]
     steps:
       - uses: actions/checkout@v1
-      - name: "Using ${{ matrix.bash-version }}"
+      - name: "Tests"
         run: ${{ matrix.bash-version }} -c 'bats test'
       - name: "Benchmark"
         run: ${{ matrix.bash-version }} -c 'example() { sleep 1; } && source bash-cache.sh && bc::benchmark example && bc::benchmark_memoize example'

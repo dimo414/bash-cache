@@ -112,7 +112,6 @@ skip_osx() {
 }
 
 @test "_time" {
-  true=1
   duration=$(bc::_time sleep 1)
-  [[ "$(bc <<<"$duration >= 1")" == $true ]]
+  [[ "$duration" == 1.* ]]
 }
