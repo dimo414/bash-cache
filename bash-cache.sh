@@ -95,7 +95,7 @@ bc::_to_seconds() {
       esac
       (( duration += magnitude * ${element%?} )) # trim unit with %?
     else
-      printf "Invalid duration: '%s' (token: %s)\n" "$1" "${input##* }" >&2
+      printf "Invalid duration: '%s' (token: %s)\n" "$*" "${input##* }" >&2
       return 1
     fi
   done
